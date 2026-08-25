@@ -1,10 +1,10 @@
 {
-  "name":"Meu Financeiro",
-  "short_name":"Financeiro",
-  "start_url":"./",
-  "display":"standalone",
-  "background_color":"#0b0d13",
-  "theme_color":"#0b0d13",
-  "lang":"pt-BR",
-  "description":"Controle financeiro pessoal e do casal."
+  "name": "Meu Financeiro",
+  "short_name": "Financeiro",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0b0d13",
+  "theme_color": "#0b0d13",
+  "lang": "pt-BR",
+  "description": "Controle financeiro pessoal e do casal."
 }

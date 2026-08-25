@@ -1,78 +1,87 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0d0f16">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Financeiro">
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css">
-  <title>Financeiro</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d13">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Financeiro">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="styles.css">
+<title>Meu Financeiro</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
-  <main class="app">
-    <header class="header">
-      <div>
-        <p class="eyebrow">Meu Financeiro</p>
-        <h1>Olá, Juciara 👋</h1>
-        <p class="month">Agosto 2026 <span>⌄</span></p>
-      </div>
-      <button class="icon-btn" id="themeBtn" aria-label="Alternar tema">◐</button>
-    </header>
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <div class="brand-mark">₣</div>
+    <p class="eyebrow">MEU FINANCEIRO</p>
+    <h1>Suas finanças,<br><span>do seu jeito.</span></h1>
+    <p class="login-copy">Entre com sua conta Google para acessar seu espaço financeiro.</p>
+    <div id="googleButton" class="google-button"></div>
+    <p id="loginStatus" class="login-status"></p>
+    <small class="privacy-note">Seu login é feito pelo Google. Nesta etapa, o app apenas identifica sua conta; nenhum dado financeiro é acessado.</small>
+  </div>
+</div>
 
-    <section class="balance-card">
-      <p>Saldo disponível</p>
-      <strong>R$ 1.855,40</strong>
-      <div class="balance-row">
-        <span>Receitas <b class="positive">R$ 3.095,00</b></span>
-        <span>Despesas <b class="negative">R$ 1.239,60</b></span>
-      </div>
-    </section>
+<div id="app" class="hidden">
+<main class="app">
+<header class="header">
+  <div>
+    <p class="eyebrow">MEU FINANCEIRO</p>
+    <h1 id="greeting">Olá 👋</h1>
+    <p class="month">Agosto 2026 <span>⌄</span></p>
+  </div>
+  <button class="icon-btn" id="themeBtn" aria-label="Alternar tema">◐</button>
+</header>
 
-    <section class="section">
-      <div class="section-head"><h2>Seus objetivos</h2><button class="text-btn">Ver todos</button></div>
-      <div class="goal-list">
-        <article class="goal">
-          <div class="goal-top"><span>🚗 Carro</span><b>45%</b></div>
-          <div class="progress"><i style="width:45%"></i></div>
-          <small>R$ 4.500 de R$ 10.000</small>
-        </article>
-        <article class="goal">
-          <div class="goal-top"><span>📱 iPhone</span><b>28%</b></div>
-          <div class="progress"><i style="width:28%"></i></div>
-          <small>R$ 1.400 de R$ 5.000</small>
-        </article>
-      </div>
-    </section>
+<section class="welcome-strip">
+  <div><span class="check">✓</span><div><b>Login realizado</b><small id="signedUser"></small></div></div>
+  <button id="logoutBtn">Sair</button>
+</section>
 
-    <section class="section">
-      <div class="section-head"><h2>Últimos lançamentos</h2><button class="text-btn">Ver todos</button></div>
-      <div class="transactions">
-        <div class="transaction"><span class="tx-icon">🍔</span><div><b>Alimentação</b><small>Hoje · Nubank</small></div><strong class="negative">− R$ 35,90</strong></div>
-        <div class="transaction"><span class="tx-icon">🏠</span><div><b>Casa</b><small>Ontem · Caixa</small></div><strong class="negative">− R$ 84,00</strong></div>
-        <div class="transaction"><span class="tx-icon">💰</span><div><b>Salário</b><small>05 ago · Nubank</small></div><strong class="positive">+ R$ 3.095,00</strong></div>
-      </div>
-    </section>
+<section class="balance-card">
+  <p>Saldo disponível</p><strong>R$ 1.855,40</strong>
+  <div class="balance-row">
+    <span>Receitas <b>R$ 3.095,00</b></span>
+    <span>Despesas <b>R$ 1.239,60</b></span>
+  </div>
+</section>
 
-    <section class="quick">
-      <h2>Atalhos</h2>
-      <button class="quick-card"><span>➕</span><div><b>Novo lançamento</b><small>Registre uma receita ou despesa</small></div><em>›</em></button>
-      <button class="quick-card"><span>🔄</span><div><b>Recorrentes</b><small>Veja o que está previsto para este mês</small></div><em>›</em></button>
-    </section>
-  </main>
+<section class="section">
+<div class="section-head"><h2>Seus objetivos</h2><button class="text-btn">Ver todos</button></div>
+<div class="goal-list">
+<article class="goal"><div class="goal-top"><span>🚗 Carro</span><b>45%</b></div><div class="progress"><i style="width:45%"></i></div><small>R$ 4.500 de R$ 10.000</small></article>
+<article class="goal"><div class="goal-top"><span>📱 iPhone</span><b>28%</b></div><div class="progress"><i style="width:28%"></i></div><small>R$ 1.400 de R$ 5.000</small></article>
+</div>
+</section>
 
-  <button class="fab" aria-label="Novo lançamento">+</button>
+<section class="section">
+<div class="section-head"><h2>Últimos lançamentos</h2><button class="text-btn">Ver todos</button></div>
+<div class="transactions">
+<div class="transaction"><span class="tx-icon">🍔</span><div><b>Alimentação</b><small>Hoje · Nubank</small></div><strong class="negative">− R$ 35,90</strong></div>
+<div class="transaction"><span class="tx-icon">🏠</span><div><b>Casa</b><small>Ontem · Caixa</small></div><strong class="negative">− R$ 84,00</strong></div>
+<div class="transaction"><span class="tx-icon">💰</span><div><b>Salário</b><small>05 ago · Nubank</small></div><strong class="positive">+ R$ 3.095,00</strong></div>
+</div>
+</section>
 
-  <nav class="bottom-nav">
-    <button class="active"><span>⌂</span><small>Início</small></button>
-    <button><span>💸</span><small>Lançamentos</small></button>
-    <button><span>🎯</span><small>Objetivos</small></button>
-    <button><span>📊</span><small>Relatórios</small></button>
-    <button><span>⚙️</span><small>Ajustes</small></button>
-  </nav>
+<section class="quick">
+<h2>Atalhos</h2>
+<button class="quick-card"><span>➕</span><div><b>Novo lançamento</b><small>Registre uma receita ou despesa</small></div><em>›</em></button>
+<button class="quick-card"><span>🔄</span><div><b>Recorrentes</b><small>Veja o que está previsto para este mês</small></div><em>›</em></button>
+</section>
+</main>
 
-  <script src="app.js"></script>
+<button class="fab" aria-label="Novo lançamento">+</button>
+<nav class="bottom-nav">
+<button class="active"><span>⌂</span><small>Início</small></button>
+<button><span>💸</span><small>Lançamentos</small></button>
+<button><span>🎯</span><small>Objetivos</small></button>
+<button><span>📊</span><small>Relatórios</small></button>
+<button><span>⚙️</span><small>Ajustes</small></button>
+</nav>
+</div>
+<script src="app.js"></script>
 </body>
 </html>
