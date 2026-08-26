@@ -427,3 +427,255 @@ button{font:inherit;color:inherit;cursor:pointer}
   }
 
 }
+
+/* =====================================================
+   CORREÇÃO — MODAL DE LANÇAMENTO
+   ===================================================== */
+
+.finance-modal.hidden {
+  display: none !important;
+}
+
+.finance-modal:not(.hidden) {
+  display: block !important;
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+}
+
+.finance-modal-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  background: rgba(0, 0, 0, 0.72) !important;
+  backdrop-filter: blur(6px);
+}
+
+.finance-modal-card {
+  position: fixed !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+
+  width: min(92vw, 520px) !important;
+  max-height: 88vh !important;
+  overflow-y: auto !important;
+
+  box-sizing: border-box !important;
+  padding: 24px !important;
+
+  background: #151821 !important;
+  border: 1px solid #303646 !important;
+  border-radius: 24px !important;
+
+  box-shadow: 0 25px 80px rgba(0, 0, 0, .55) !important;
+
+  color: #f5f5f7 !important;
+}
+
+
+/* Cabeçalho */
+
+.finance-modal-header {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 20px !important;
+  margin-bottom: 22px !important;
+}
+
+.finance-modal-header h2 {
+  margin: 4px 0 0 !important;
+  font-size: 24px !important;
+  line-height: 1.2 !important;
+}
+
+.modal-close {
+  width: 36px !important;
+  height: 36px !important;
+
+  display: grid !important;
+  place-items: center !important;
+
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+
+  background: #252a36 !important;
+  color: #d5d8e0 !important;
+
+  font-size: 25px !important;
+  line-height: 1 !important;
+}
+
+
+/* Receita / Despesa */
+
+.type-toggle {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 8px !important;
+
+  padding: 5px !important;
+  margin-bottom: 20px !important;
+
+  background: #0d1016 !important;
+  border-radius: 14px !important;
+}
+
+.type-btn {
+  width: 100% !important;
+
+  padding: 11px !important;
+
+  border: 0 !important;
+  border-radius: 10px !important;
+
+  background: transparent !important;
+  color: #9ca3b5 !important;
+
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+
+.type-btn.active {
+  background: #8066ff !important;
+  color: #fff !important;
+}
+
+
+/* Campos */
+
+.finance-modal-card label {
+  display: block !important;
+
+  margin-bottom: 14px !important;
+
+  color: #b7bcc9 !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+
+.finance-modal-card input,
+.finance-modal-card select,
+.finance-modal-card textarea {
+  display: block !important;
+
+  width: 100% !important;
+  box-sizing: border-box !important;
+
+  margin-top: 7px !important;
+  padding: 12px 13px !important;
+
+  border: 1px solid #303646 !important;
+  border-radius: 12px !important;
+
+  background: #0d1016 !important;
+  color: #fff !important;
+
+  font-size: 15px !important;
+  font-family: inherit !important;
+
+  outline: none !important;
+}
+
+.finance-modal-card input:focus,
+.finance-modal-card select:focus,
+.finance-modal-card textarea:focus {
+  border-color: #8066ff !important;
+}
+
+.finance-modal-card textarea {
+  min-height: 80px !important;
+  resize: vertical !important;
+}
+
+
+/* Duas colunas */
+
+.finance-modal-card .form-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 12px !important;
+}
+
+
+/* Salvar */
+
+.finance-modal-card .save-launch-btn {
+  width: 100% !important;
+  margin-top: 5px !important;
+
+  border: 0 !important;
+  border-radius: 14px !important;
+
+  padding: 14px !important;
+
+  background: #8066ff !important;
+  color: #fff !important;
+
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+
+/* Erro */
+
+.finance-modal-card .form-error {
+  min-height: 18px !important;
+  margin-bottom: 8px !important;
+
+  color: #ff647b !important;
+  font-size: 13px !important;
+}
+
+
+/* Lixeira */
+
+.delete-launch-btn {
+  width: 32px !important;
+  height: 32px !important;
+
+  display: grid !important;
+  place-items: center !important;
+
+  padding: 0 !important;
+
+  border: 0 !important;
+  border-radius: 9px !important;
+
+  background: transparent !important;
+
+  font-size: 15px !important;
+  line-height: 1 !important;
+
+  opacity: .55 !important;
+}
+
+.delete-launch-btn:hover {
+  background: #292e3b !important;
+  opacity: 1 !important;
+}
+
+
+/* Mobile */
+
+@media (max-width: 600px) {
+
+  .finance-modal-card {
+    width: calc(100vw - 24px) !important;
+    max-height: 90vh !important;
+
+    padding: 20px !important;
+    border-radius: 22px !important;
+  }
+
+  .finance-modal-card .form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0 !important;
+  }
+
+  .finance-modal-header h2 {
+    font-size: 22px !important;
+  }
+
+}
