@@ -2,7 +2,7 @@ const CLIENT_ID =
   '499603195416-5blucsgjuuc22forettuomnu7o2s29cb.apps.googleusercontent.com';
 
 const API_URL =
-  'https://script.google.com/macros/s/AKfycbwChtVhPPwwCGAGLfAnCxE5iR9qS2piShkWBBmkZ9qrfXWdP5LNhkuzk4SsNmScWeiz/exec';
+  'https://meu-financeiro-api.ju-carvalho13.workers.dev';
 
 
 const root = document.documentElement;
