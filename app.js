@@ -1224,72 +1224,94 @@ function configurarEventos() {
   configurarTema();
 
   const logoutButton =
-    document.getElementById(
-      'logoutBtn'
-    );
+    document.getElementById('logoutBtn');
 
   if (logoutButton) {
-
     logoutButton.addEventListener(
       'click',
       logout
     );
   }
 
-
-  /*
-   * FAB
-   */
+  // =========================
+  // NOVO LANÇAMENTO
+  // =========================
 
   document
     .querySelector('.fab')
     ?.addEventListener(
       'click',
-      () => {
-
-        console.log(
-          'Novo lançamento'
-        );
-
-        /*
-         * A tela de lançamento será
-         * conectada na próxima etapa.
-         */
-      }
+      () => abrirPaginaLancamentos(true)
     );
 
-
-  /*
-   * Atalho novo lançamento
-   */
-
   document
-    .querySelector(
-      '.quick-card'
-    )
+    .querySelector('.quick-card')
     ?.addEventListener(
       'click',
-      () => {
-
-        console.log(
-          'Novo lançamento'
-        );
-      }
+      () => abrirPaginaLancamentos(true)
     );
 
+  // =========================
+  // NAVEGAÇÃO INFERIOR
+  // =========================
 
-  /*
-   * Se existir seletor de espaço.
-   */
+  const navButtons =
+    document.querySelectorAll(
+      '.bottom-nav button'
+    );
+
+  navButtons.forEach(
+    (button, index) => {
+
+      button.addEventListener(
+        'click',
+        () => {
+
+          if (index === 0) {
+            voltarInicio();
+            return;
+          }
+
+          if (index === 1) {
+            abrirPaginaLancamentos(false);
+            return;
+          }
+
+          if (index === 2) {
+            alert(
+              'A aba Objetivos será conectada na próxima etapa.'
+            );
+            return;
+          }
+
+          if (index === 3) {
+            alert(
+              'A aba Relatórios será conectada na próxima etapa.'
+            );
+            return;
+          }
+
+          if (index === 4) {
+            alert(
+              'A aba Ajustes será conectada na próxima etapa.'
+            );
+          }
+
+        }
+      );
+
+    }
+  );
+
+  // =========================
+  // SELETOR DE ESPAÇO
+  // =========================
 
   document
-    .getElementById(
-      'scopeSelect'
-    )
+    .getElementById('scopeSelect')
     ?.addEventListener(
       'change',
       event => {
-
         trocarEscopo(
           event.target.value
         );
@@ -1318,3 +1340,1478 @@ window.addEventListener(
     restaurarSessao();
   }
 );
+
+
+/* =====================================================
+   PÁGINA DE LANÇAMENTOS
+   ===================================================== */
+
+let lancamentosPage = null;
+
+
+/* =====================================================
+   ABRIR LANÇAMENTOS
+   ===================================================== */
+
+async function abrirPaginaLancamentos(
+  abrirFormulario = false
+) {
+
+  criarPaginaLancamentos();
+
+  document
+    .querySelector('.app')
+    ?.classList.add('hidden');
+
+  document
+    .querySelector('.bottom-nav')
+    ?.classList.add('lancamentos-open');
+
+  lancamentosPage.classList.remove(
+    'hidden'
+  );
+
+  marcarNavAtiva(1);
+
+  await atualizarListaLancamentosPage();
+
+  if (abrirFormulario) {
+    abrirFormularioLancamento();
+  }
+}
+
+
+/* =====================================================
+   VOLTAR PARA INÍCIO
+   ===================================================== */
+
+function voltarInicio() {
+
+  if (lancamentosPage) {
+    lancamentosPage.classList.add(
+      'hidden'
+    );
+  }
+
+  document
+    .querySelector('.app')
+    ?.classList.remove('hidden');
+
+  document
+    .querySelector('.bottom-nav')
+    ?.classList.remove(
+      'lancamentos-open'
+    );
+
+  marcarNavAtiva(0);
+
+  carregarDashboard();
+}
+
+
+/* =====================================================
+   CRIA A PÁGINA
+   ===================================================== */
+
+function criarPaginaLancamentos() {
+
+  if (lancamentosPage) {
+    return;
+  }
+
+  lancamentosPage =
+    document.createElement('div');
+
+  lancamentosPage.id =
+    'lancamentosPage';
+
+  lancamentosPage.className =
+    'finance-page hidden';
+
+  lancamentosPage.innerHTML = `
+
+    <header class="finance-page-header">
+
+      <div>
+        <p class="eyebrow">
+          MEU FINANCEIRO
+        </p>
+
+        <h1>
+          Lançamentos
+        </h1>
+
+        <p class="finance-page-subtitle">
+          Controle suas receitas e despesas
+        </p>
+      </div>
+
+      <button
+        class="finance-back-btn"
+        id="backLancamentosBtn"
+        aria-label="Voltar"
+      >
+        ←
+      </button>
+
+    </header>
+
+
+    <section class="launch-summary">
+
+      <div>
+        <small>
+          Receitas
+        </small>
+
+        <strong
+          id="launchReceitas"
+          class="positive"
+        >
+          R$ 0,00
+        </strong>
+      </div>
+
+      <div>
+        <small>
+          Despesas
+        </small>
+
+        <strong
+          id="launchDespesas"
+          class="negative"
+        >
+          R$ 0,00
+        </strong>
+      </div>
+
+    </section>
+
+
+    <section class="launch-actions">
+
+      <button
+        class="primary-action"
+        id="novoLancamentoPageBtn"
+      >
+        <span>＋</span>
+        Novo lançamento
+      </button>
+
+    </section>
+
+
+    <section class="launch-filters">
+
+      <div class="filter-row">
+
+        <select id="filtroMesLancamentos">
+          <option value="TODOS">
+            Todos os meses
+          </option>
+        </select>
+
+        <select id="filtroTipoLancamentos">
+          <option value="">
+            Todos os tipos
+          </option>
+
+          <option value="RECEITA">
+            Receitas
+          </option>
+
+          <option value="DESPESA">
+            Despesas
+          </option>
+        </select>
+
+      </div>
+
+
+      <div class="filter-row">
+
+        <select id="filtroCategoriaLancamentos">
+          <option value="">
+            Todas as categorias
+          </option>
+        </select>
+
+        <input
+          id="buscaLancamentos"
+          type="search"
+          placeholder="Buscar lançamento..."
+        >
+
+      </div>
+
+    </section>
+
+
+    <section
+      id="listaLancamentosPage"
+      class="launch-list"
+    ></section>
+
+
+    <div
+      id="modalLancamento"
+      class="finance-modal hidden"
+    ></div>
+
+  `;
+
+  document
+    .getElementById('app')
+    ?.appendChild(
+      lancamentosPage
+    );
+
+
+  document
+    .getElementById(
+      'backLancamentosBtn'
+    )
+    ?.addEventListener(
+      'click',
+      voltarInicio
+    );
+
+
+  document
+    .getElementById(
+      'novoLancamentoPageBtn'
+    )
+    ?.addEventListener(
+      'click',
+      abrirFormularioLancamento
+    );
+
+
+  document
+    .getElementById(
+      'filtroMesLancamentos'
+    )
+    ?.addEventListener(
+      'change',
+      atualizarListaLancamentosPage
+    );
+
+
+  document
+    .getElementById(
+      'filtroTipoLancamentos'
+    )
+    ?.addEventListener(
+      'change',
+      () => {
+        atualizarCategoriasFiltro();
+        atualizarListaLancamentosPage();
+      }
+    );
+
+
+  document
+    .getElementById(
+      'filtroCategoriaLancamentos'
+    )
+    ?.addEventListener(
+      'change',
+      atualizarListaLancamentosPage
+    );
+
+
+  document
+    .getElementById(
+      'buscaLancamentos'
+    )
+    ?.addEventListener(
+      'input',
+      atualizarListaLancamentosPage
+    );
+
+
+  preencherFiltroMeses();
+
+  atualizarCategoriasFiltro();
+}
+
+
+/* =====================================================
+   FILTRO DE MESES
+   ===================================================== */
+
+function preencherFiltroMeses() {
+
+  const select =
+    document.getElementById(
+      'filtroMesLancamentos'
+    );
+
+  if (!select) {
+    return;
+  }
+
+  const meses = new Set();
+
+  state.lancamentos.forEach(
+    lancamento => {
+
+      if (
+        lancamento.data
+      ) {
+
+        meses.add(
+          lancamento.data.substring(
+            0,
+            7
+          )
+        );
+
+      }
+
+    }
+  );
+
+  const ordenados =
+    [...meses].sort(
+      (a, b) =>
+        b.localeCompare(a)
+    );
+
+  select.innerHTML = `
+    <option value="TODOS">
+      Todos os meses
+    </option>
+  `;
+
+  ordenados.forEach(
+    mes => {
+
+      const [ano, numero] =
+        mes.split('-');
+
+      const data =
+        new Date(
+          Number(ano),
+          Number(numero) - 1,
+          1
+        );
+
+      const nome =
+        data.toLocaleDateString(
+          'pt-BR',
+          {
+            month: 'long',
+            year: 'numeric'
+          }
+        );
+
+      const option =
+        document.createElement(
+          'option'
+        );
+
+      option.value = mes;
+
+      option.textContent =
+        nome.charAt(0).toUpperCase() +
+        nome.slice(1);
+
+      select.appendChild(
+        option
+      );
+
+    }
+  );
+}
+
+
+/* =====================================================
+   CATEGORIAS DO FILTRO
+   ===================================================== */
+
+function atualizarCategoriasFiltro() {
+
+  const select =
+    document.getElementById(
+      'filtroCategoriaLancamentos'
+    );
+
+  if (!select) {
+    return;
+  }
+
+  const tipo =
+    document.getElementById(
+      'filtroTipoLancamentos'
+    )?.value || '';
+
+  const categorias =
+    state.categorias
+      .filter(
+        categoria =>
+          !tipo ||
+          categoria.tipo === tipo
+      )
+      .map(
+        categoria =>
+          categoria.nome
+      )
+      .sort();
+
+  select.innerHTML = `
+    <option value="">
+      Todas as categorias
+    </option>
+  `;
+
+  categorias.forEach(
+    nome => {
+
+      const option =
+        document.createElement(
+          'option'
+        );
+
+      option.value = nome;
+      option.textContent = nome;
+
+      select.appendChild(
+        option
+      );
+
+    }
+  );
+}
+
+
+/* =====================================================
+   ATUALIZA LISTA
+   ===================================================== */
+
+async function atualizarListaLancamentosPage() {
+
+  const lista =
+    document.getElementById(
+      'listaLancamentosPage'
+    );
+
+  if (!lista) {
+    return;
+  }
+
+  lista.innerHTML = `
+    <div class="launch-loading">
+      Carregando lançamentos...
+    </div>
+  `;
+
+  const mes =
+    document.getElementById(
+      'filtroMesLancamentos'
+    )?.value || 'TODOS';
+
+  const tipo =
+    document.getElementById(
+      'filtroTipoLancamentos'
+    )?.value || '';
+
+  const categoria =
+    document.getElementById(
+      'filtroCategoriaLancamentos'
+    )?.value || '';
+
+  const busca =
+    (
+      document.getElementById(
+        'buscaLancamentos'
+      )?.value || ''
+    )
+      .trim()
+      .toLowerCase();
+
+
+  const dados =
+    await carregarLancamentos();
+
+
+  let filtrados =
+    dados.filter(
+      item => {
+
+        if (
+          mes !== 'TODOS' &&
+          !item.data.startsWith(
+            mes
+          )
+        ) {
+          return false;
+        }
+
+        if (
+          tipo &&
+          item.tipo !== tipo
+        ) {
+          return false;
+        }
+
+        if (
+          categoria &&
+          item.categoria !== categoria
+        ) {
+          return false;
+        }
+
+        if (busca) {
+
+          const texto =
+            (
+              item.descricao +
+              ' ' +
+              item.categoria +
+              ' ' +
+              (item.conta || '')
+            )
+              .toLowerCase();
+
+          if (
+            !texto.includes(
+              busca
+            )
+          ) {
+            return false;
+          }
+
+        }
+
+        return true;
+
+      }
+    );
+
+
+  renderPaginaLancamentos(
+    filtrados
+  );
+}
+
+
+/* =====================================================
+   RENDER DA LISTA
+   ===================================================== */
+
+function renderPaginaLancamentos(
+  lancamentos
+) {
+
+  const lista =
+    document.getElementById(
+      'listaLancamentosPage'
+    );
+
+  if (!lista) {
+    return;
+  }
+
+
+  const receitas =
+    lancamentos
+      .filter(
+        item =>
+          item.tipo ===
+          'RECEITA'
+      )
+      .reduce(
+        (total, item) =>
+          total +
+          Number(
+            item.valor || 0
+          ),
+        0
+      );
+
+
+  const despesas =
+    lancamentos
+      .filter(
+        item =>
+          item.tipo ===
+          'DESPESA'
+      )
+      .reduce(
+        (total, item) =>
+          total +
+          Number(
+            item.valor || 0
+          ),
+        0
+      );
+
+
+  const receitasEl =
+    document.getElementById(
+      'launchReceitas'
+    );
+
+  const despesasEl =
+    document.getElementById(
+      'launchDespesas'
+    );
+
+  if (receitasEl) {
+    receitasEl.textContent =
+      formatMoney(
+        receitas
+      );
+  }
+
+  if (despesasEl) {
+    despesasEl.textContent =
+      formatMoney(
+        despesas
+      );
+  }
+
+
+  if (!lancamentos.length) {
+
+    lista.innerHTML = `
+      <div class="launch-empty">
+        <span>💸</span>
+
+        <strong>
+          Nenhum lançamento encontrado
+        </strong>
+
+        <small>
+          Tente mudar os filtros ou registre um novo lançamento.
+        </small>
+
+        <button
+          class="primary-action"
+          onclick="abrirFormularioLancamento()"
+        >
+          Novo lançamento
+        </button>
+      </div>
+    `;
+
+    return;
+  }
+
+
+  lista.innerHTML =
+    lancamentos
+      .map(
+        item => {
+
+          const despesa =
+            item.tipo ===
+            'DESPESA';
+
+          return `
+
+            <article
+              class="launch-item"
+            >
+
+              <div
+                class="launch-icon"
+              >
+                ${iconeCategoria(
+                  item.categoria
+                )}
+              </div>
+
+
+              <div
+                class="launch-info"
+              >
+
+                <strong>
+                  ${escapeHtml(
+                    item.descricao
+                  )}
+                </strong>
+
+                <small>
+                  ${formatDate(
+                    item.data
+                  )}
+                  ·
+                  ${escapeHtml(
+                    item.categoria ||
+                    'Outros'
+                  )}
+                  ${
+                    item.conta
+                      ? ' · ' +
+                        escapeHtml(
+                          item.conta
+                        )
+                      : ''
+                  }
+                </small>
+
+                ${
+                  item.parcelas > 1
+                    ? `
+                      <small>
+                        Parcela
+                        ${item.parcelaAtual}
+                        /
+                        ${item.parcelas}
+                      </small>
+                    `
+                    : ''
+                }
+
+              </div>
+
+
+              <div
+                class="launch-value"
+              >
+
+                <strong
+                  class="${
+                    despesa
+                      ? 'negative'
+                      : 'positive'
+                  }"
+                >
+                  ${
+                    despesa
+                      ? '− '
+                      : '+ '
+                  }${formatMoney(
+                    item.valor
+                  )}
+                </strong>
+
+                <button
+                  class="delete-launch-btn"
+                  data-id="${
+                    escapeAttribute(
+                      item.id
+                    )
+                  }"
+                  aria-label="Excluir lançamento"
+                >
+                  🗑️
+                </button>
+
+              </div>
+
+            </article>
+
+          `;
+
+        }
+      )
+      .join('');
+
+
+  lista
+    .querySelectorAll(
+      '.delete-launch-btn'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () => {
+
+            excluirLancamentoDaPagina(
+              button.dataset.id
+            );
+
+          }
+        );
+
+      }
+    );
+}
+
+
+/* =====================================================
+   NOVO LANÇAMENTO
+   ===================================================== */
+
+function abrirFormularioLancamento() {
+
+  const modal =
+    document.getElementById(
+      'modalLancamento'
+    );
+
+  if (!modal) {
+    return;
+  }
+
+
+  const hoje =
+    new Date()
+      .toISOString()
+      .split('T')[0];
+
+
+  modal.innerHTML = `
+
+    <div
+      class="finance-modal-backdrop"
+    ></div>
+
+    <div
+      class="finance-modal-card"
+    >
+
+      <header
+        class="finance-modal-header"
+      >
+
+        <div>
+          <p class="eyebrow">
+            NOVO LANÇAMENTO
+          </p>
+
+          <h2>
+            Registrar movimento
+          </h2>
+        </div>
+
+        <button
+          id="fecharModalLancamento"
+          class="modal-close"
+        >
+          ×
+        </button>
+
+      </header>
+
+
+      <form
+        id="formLancamento"
+      >
+
+        <div
+          class="type-toggle"
+        >
+
+          <button
+            type="button"
+            data-tipo="DESPESA"
+            class="type-btn active"
+          >
+            − Despesa
+          </button>
+
+          <button
+            type="button"
+            data-tipo="RECEITA"
+            class="type-btn"
+          >
+            + Receita
+          </button>
+
+        </div>
+
+
+        <input
+          type="hidden"
+          id="lancamentoTipo"
+          value="DESPESA"
+        >
+
+
+        <label>
+          Descrição
+
+          <input
+            id="lancamentoDescricao"
+            type="text"
+            placeholder="Ex.: Mercado"
+            required
+          >
+
+        </label>
+
+
+        <div
+          class="form-grid"
+        >
+
+          <label>
+            Valor
+
+            <input
+              id="lancamentoValor"
+              type="number"
+              min="0.01"
+              step="0.01"
+              placeholder="0,00"
+              required
+            >
+
+          </label>
+
+
+          <label>
+            Data
+
+            <input
+              id="lancamentoData"
+              type="date"
+              value="${hoje}"
+              required
+            >
+
+          </label>
+
+        </div>
+
+
+        <div
+          class="form-grid"
+        >
+
+          <label>
+            Categoria
+
+            <select
+              id="lancamentoCategoria"
+              required
+            ></select>
+
+          </label>
+
+
+          <label>
+            Conta
+
+            <select
+              id="lancamentoConta"
+            >
+              <option value="">
+                Sem conta
+              </option>
+            </select>
+
+          </label>
+
+        </div>
+
+
+        <div
+          class="form-grid"
+        >
+
+          <label>
+            Forma de pagamento
+
+            <select
+              id="lancamentoForma"
+            >
+
+              <option value="">
+                Não informado
+              </option>
+
+              <option value="Pix">
+                Pix
+              </option>
+
+              <option value="Débito">
+                Débito
+              </option>
+
+              <option value="Crédito">
+                Crédito
+              </option>
+
+              <option value="Dinheiro">
+                Dinheiro
+              </option>
+
+              <option value="Transferência">
+                Transferência
+              </option>
+
+            </select>
+
+          </label>
+
+
+          <label>
+            Parcelas
+
+            <input
+              id="lancamentoParcelas"
+              type="number"
+              min="1"
+              max="60"
+              value="1"
+            >
+
+          </label>
+
+        </div>
+
+
+        <label>
+          Observação
+
+          <textarea
+            id="lancamentoObservacao"
+            rows="3"
+            placeholder="Opcional"
+          ></textarea>
+
+        </label>
+
+
+        <div
+          id="lancamentoFormErro"
+          class="form-error"
+        ></div>
+
+
+        <button
+          type="submit"
+          class="primary-action save-launch-btn"
+        >
+          Salvar lançamento
+        </button>
+
+      </form>
+
+    </div>
+
+  `;
+
+  modal.classList.remove(
+    'hidden'
+  );
+
+
+  preencherFormularioLancamento();
+
+
+  document
+    .getElementById(
+      'fecharModalLancamento'
+    )
+    ?.addEventListener(
+      'click',
+      fecharModalLancamento
+    );
+
+
+  modal
+    .querySelector(
+      '.finance-modal-backdrop'
+    )
+    ?.addEventListener(
+      'click',
+      fecharModalLancamento
+    );
+
+
+  modal
+    .querySelectorAll(
+      '.type-btn'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () => {
+
+            modal
+              .querySelectorAll(
+                '.type-btn'
+              )
+              .forEach(
+                b =>
+                  b.classList.remove(
+                    'active'
+                  )
+              );
+
+            button.classList.add(
+              'active'
+            );
+
+            document
+              .getElementById(
+                'lancamentoTipo'
+              )
+              .value =
+              button.dataset.tipo;
+
+            preencherCategoriasFormulario();
+
+          }
+        );
+
+      }
+    );
+
+
+  document
+    .getElementById(
+      'formLancamento'
+    )
+    ?.addEventListener(
+      'submit',
+      salvarLancamentoFormulario
+    );
+}
+
+
+/* =====================================================
+   CATEGORIAS DO FORMULÁRIO
+   ===================================================== */
+
+function preencherFormularioLancamento() {
+
+  preencherCategoriasFormulario();
+
+  const contaSelect =
+    document.getElementById(
+      'lancamentoConta'
+    );
+
+  if (!contaSelect) {
+    return;
+  }
+
+  state.contas
+    .forEach(
+      conta => {
+
+        const option =
+          document.createElement(
+            'option'
+          );
+
+        option.value =
+          conta.nome;
+
+        option.textContent =
+          conta.banco
+            ? `${conta.nome} · ${conta.banco}`
+            : conta.nome;
+
+        contaSelect.appendChild(
+          option
+        );
+
+      }
+    );
+}
+
+
+function preencherCategoriasFormulario() {
+
+  const select =
+    document.getElementById(
+      'lancamentoCategoria'
+    );
+
+  if (!select) {
+    return;
+  }
+
+  const tipo =
+    document.getElementById(
+      'lancamentoTipo'
+    )?.value ||
+    'DESPESA';
+
+  const categorias =
+    state.categorias
+      .filter(
+        categoria =>
+          categoria.tipo ===
+          tipo
+      );
+
+  select.innerHTML = '';
+
+  categorias.forEach(
+    categoria => {
+
+      const option =
+        document.createElement(
+          'option'
+        );
+
+      option.value =
+        categoria.nome;
+
+      option.textContent =
+        categoria.nome;
+
+      select.appendChild(
+        option
+      );
+
+    }
+  );
+
+}
+
+
+/* =====================================================
+   SALVAR
+   ===================================================== */
+
+async function salvarLancamentoFormulario(
+  event
+) {
+
+  event.preventDefault();
+
+  const erro =
+    document.getElementById(
+      'lancamentoFormErro'
+    );
+
+  const button =
+    document.querySelector(
+      '.save-launch-btn'
+    );
+
+  try {
+
+    if (erro) {
+      erro.textContent = '';
+    }
+
+    if (button) {
+      button.disabled = true;
+      button.textContent =
+        'Salvando...';
+    }
+
+
+    const tipo =
+      document.getElementById(
+        'lancamentoTipo'
+      ).value;
+
+    const dados = {
+
+      escopo:
+        state.escopo,
+
+      tipo:
+
+        tipo,
+
+      descricao:
+        document.getElementById(
+          'lancamentoDescricao'
+        ).value.trim(),
+
+      valor:
+        Number(
+          document.getElementById(
+            'lancamentoValor'
+          ).value
+        ),
+
+      data:
+        document.getElementById(
+          'lancamentoData'
+        ).value,
+
+      categoria:
+        document.getElementById(
+          'lancamentoCategoria'
+        ).value,
+
+      conta:
+        document.getElementById(
+          'lancamentoConta'
+        ).value,
+
+      formaPagamento:
+        document.getElementById(
+          'lancamentoForma'
+        ).value,
+
+      parcelas:
+        Number(
+          document.getElementById(
+            'lancamentoParcelas'
+          ).value || 1
+        ),
+
+      observacao:
+        document.getElementById(
+          'lancamentoObservacao'
+        ).value.trim()
+
+    };
+
+
+    if (
+      !dados.descricao
+    ) {
+      throw new Error(
+        'Informe uma descrição.'
+      );
+    }
+
+    if (
+      !dados.valor ||
+      dados.valor <= 0
+    ) {
+      throw new Error(
+        'Informe um valor válido.'
+      );
+    }
+
+
+    const action =
+      dados.parcelas > 1
+        ? 'salvarParcelamento'
+        : 'salvarLancamento';
+
+
+    await api(
+      action,
+      dados,
+      'POST'
+    );
+
+
+    fecharModalLancamento();
+
+
+    await carregarLancamentos();
+
+    preencherFiltroMeses();
+
+    await atualizarListaLancamentosPage();
+
+    await carregarDashboard();
+
+  } catch (error) {
+
+    console.error(
+      error
+    );
+
+    if (erro) {
+      erro.textContent =
+        error.message;
+    }
+
+  } finally {
+
+    if (button) {
+      button.disabled = false;
+      button.textContent =
+        'Salvar lançamento';
+    }
+
+  }
+}
+
+
+/* =====================================================
+   EXCLUIR
+   ===================================================== */
+
+async function excluirLancamentoDaPagina(
+  id
+) {
+
+  const confirmado =
+    window.confirm(
+      'Excluir este lançamento?'
+    );
+
+  if (!confirmado) {
+    return;
+  }
+
+  try {
+
+    await api(
+      'excluirLancamento',
+      {
+        id: id
+      },
+      'POST'
+    );
+
+    await carregarLancamentos();
+
+    preencherFiltroMeses();
+
+    await atualizarListaLancamentosPage();
+
+    await carregarDashboard();
+
+  } catch (error) {
+
+    console.error(
+      error
+    );
+
+    alert(
+      error.message
+    );
+
+  }
+}
+
+
+/* =====================================================
+   FECHAR MODAL
+   ===================================================== */
+
+function fecharModalLancamento() {
+
+  document
+    .getElementById(
+      'modalLancamento'
+    )
+    ?.classList.add(
+      'hidden'
+    );
+
+}
+
+
+/* =====================================================
+   NAV ATIVA
+   ===================================================== */
+
+function marcarNavAtiva(
+  index
+) {
+
+  const buttons =
+    document.querySelectorAll(
+      '.bottom-nav button'
+    );
+
+  buttons.forEach(
+    button =>
+      button.classList.remove(
+        'active'
+      )
+  );
+
+  buttons[index]
+    ?.classList.add(
+      'active'
+    );
+}
