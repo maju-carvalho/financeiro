@@ -358,15 +358,7 @@ async function carregarAplicacao() {
 
     await carregarDashboard();
 
-    /*
-     * Primeira carga da sessão.
-     * O cache fica pronto e as trocas de aba não
-     * precisam consultar novamente o servidor.
-     */
-    await carregarLancamentos(
-      {},
-      true
-    );
+    carregarLancamentos();
 
   } catch (error) {
 
@@ -1723,34 +1715,6 @@ if (
 } else {
 
   iniciarAplicacao();
-
-}
-
-
-/* =====================================================
-   NAVEGAÇÃO INFERIOR
-   ===================================================== */
-
-function marcarNavAtiva(
-  indice
-) {
-
-  const botoes =
-    document.querySelectorAll(
-      '.bottom-nav button'
-    );
-
-
-  botoes.forEach(
-    (botao, index) => {
-
-      botao.classList.toggle(
-        'active',
-        index === indice
-      );
-
-    }
-  );
 
 }
 
