@@ -3586,3 +3586,344 @@ async function salvarObjetivoFormulario(
   }
 
 }
+
+/* =====================================================
+   CORREÇÃO DEFINITIVA DA NAVEGAÇÃO ENTRE PÁGINAS
+   COLE ESTE BLOCO NO FINAL DO APP.JS
+   ===================================================== */
+
+
+/* Garante que elementos com a classe hidden
+   realmente fiquem escondidos. */
+(function garantirHidden() {
+
+  const style =
+    document.createElement('style');
+
+  style.id =
+    'correcaoNavegacaoFinanceiro';
+
+  style.textContent = `
+    .hidden {
+      display: none !important;
+    }
+
+    .finance-page.hidden {
+      display: none !important;
+    }
+
+    .app.hidden {
+      display: none !important;
+    }
+  `;
+
+  if (
+    !document.getElementById(
+      'correcaoNavegacaoFinanceiro'
+    )
+  ) {
+
+    document
+      .head
+      .appendChild(style);
+
+  }
+
+})();
+
+
+/* =====================================================
+   ABRIR LANÇAMENTOS
+   ===================================================== */
+
+async function abrirPaginaLancamentos(
+  abrirFormulario = false
+) {
+
+  criarPaginaLancamentos();
+
+
+  /* Esconde a página de objetivos */
+  if (objetivosPage) {
+
+    objetivosPage
+      .classList
+      .add('hidden');
+
+  }
+
+
+  /* Esconde a página inicial */
+  document
+    .querySelector('.app')
+    ?.classList
+    .add('hidden');
+
+
+  /* Mostra somente lançamentos */
+  if (lancamentosPage) {
+
+    lancamentosPage
+      .classList
+      .remove('hidden');
+
+  }
+
+
+  /* Ajusta a navegação */
+  document
+    .querySelector('.bottom-nav')
+    ?.classList
+    .remove(
+      'objetivos-open'
+    );
+
+  document
+    .querySelector('.bottom-nav')
+    ?.classList
+    .add(
+      'lancamentos-open'
+    );
+
+
+  marcarNavAtiva(1);
+
+
+  await atualizarListaLancamentosPage();
+
+
+  if (abrirFormulario) {
+
+    abrirFormularioLancamento();
+
+  }
+
+}
+
+
+/* =====================================================
+   ABRIR OBJETIVOS
+   ===================================================== */
+
+async function abrirPaginaObjetivos() {
+
+  criarPaginaObjetivos();
+
+
+  /* Esconde completamente lançamentos */
+  if (lancamentosPage) {
+
+    lancamentosPage
+      .classList
+      .add('hidden');
+
+  }
+
+
+  /* Esconde a página inicial */
+  document
+    .querySelector('.app')
+    ?.classList
+    .add('hidden');
+
+
+  /* Mostra somente objetivos */
+  if (objetivosPage) {
+
+    objetivosPage
+      .classList
+      .remove('hidden');
+
+  }
+
+
+  /* Ajusta a navegação */
+  document
+    .querySelector('.bottom-nav')
+    ?.classList
+    .remove(
+      'lancamentos-open'
+    );
+
+  document
+    .querySelector('.bottom-nav')
+    ?.classList
+    .add(
+      'objetivos-open'
+    );
+
+
+  marcarNavAtiva(2);
+
+
+  renderPaginaObjetivos();
+
+}
+
+
+/* =====================================================
+   VOLTAR PARA O INÍCIO
+   ===================================================== */
+
+function voltarInicio() {
+
+
+  /* Esconde lançamentos */
+  if (lancamentosPage) {
+
+    lancamentosPage
+      .classList
+      .add('hidden');
+
+  }
+
+
+  /* Esconde objetivos */
+  if (objetivosPage) {
+
+    objetivosPage
+      .classList
+      .add('hidden');
+
+  }
+
+
+  /* Mostra a página inicial */
+  document
+    .querySelector('.app')
+    ?.classList
+    .remove('hidden');
+
+
+  /* Limpa as classes de navegação */
+  document
+    .querySelector('.bottom-nav')
+    ?.classList
+    .remove(
+      'lancamentos-open',
+      'objetivos-open'
+    );
+
+
+  marcarNavAtiva(0);
+
+
+  carregarDashboard();
+
+}
+
+
+/* =====================================================
+   CORREÇÃO DOS BOTÕES DA NAVEGAÇÃO
+   ===================================================== */
+
+function configurarNavegacaoFinanceiro() {
+
+  const buttons =
+    document.querySelectorAll(
+      '.bottom-nav button'
+    );
+
+
+  buttons.forEach(
+    (button, index) => {
+
+      /* Remove listeners antigos
+         clonando o botão */
+
+      const novoBotao =
+        button.cloneNode(true);
+
+
+      button
+        .parentNode
+        ?.replaceChild(
+          novoBotao,
+          button
+        );
+
+
+      novoBotao.addEventListener(
+        'click',
+        () => {
+
+
+          /* INÍCIO */
+
+          if (index === 0) {
+
+            voltarInicio();
+
+            return;
+
+          }
+
+
+          /* LANÇAMENTOS */
+
+          if (index === 1) {
+
+            abrirPaginaLancamentos(false);
+
+            return;
+
+          }
+
+
+          /* OBJETIVOS */
+
+          if (index === 2) {
+
+            abrirPaginaObjetivos();
+
+            return;
+
+          }
+
+
+          /* RELATÓRIOS */
+
+          if (index === 3) {
+
+            alert(
+              'A aba Relatórios será conectada na próxima etapa.'
+            );
+
+            return;
+
+          }
+
+
+          /* AJUSTES */
+
+          if (index === 4) {
+
+            alert(
+              'A aba Ajustes será conectada na próxima etapa.'
+            );
+
+          }
+
+        }
+      );
+
+    }
+  );
+
+}
+
+
+/* Configura novamente a navegação
+   depois que a página terminar de carregar */
+
+window.addEventListener(
+  'load',
+  () => {
+
+    setTimeout(
+      configurarNavegacaoFinanceiro,
+      300
+    );
+
+  }
+);
