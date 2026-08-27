@@ -1640,9 +1640,7 @@ function configurarEventos() {
               index === 4
             ) {
 
-              alert(
-                'A aba Ajustes será conectada na próxima etapa.'
-              );
+              abrirPaginaAjustes();
 
             }
 
@@ -1739,6 +1737,15 @@ async function abrirPaginaLancamentos(
   if (objetivosPage) {
 
     objetivosPage
+      .classList
+      .add('hidden');
+
+  }
+
+
+  if (ajustesPage) {
+
+    ajustesPage
       .classList
       .add('hidden');
 
@@ -7324,5 +7331,577 @@ function renderBarrasRelatorio(
         }
       )
       .join('');
+
+}
+
+/* =====================================================
+   PÁGINA DE AJUSTES
+   ===================================================== */
+
+let ajustesPage = null;
+
+
+/* -----------------------------------------------------
+   ABRIR AJUSTES
+   ----------------------------------------------------- */
+
+function abrirPaginaAjustes() {
+
+  criarPaginaAjustes();
+
+
+  if (lancamentosPage) {
+
+    lancamentosPage
+      .classList
+      .add(
+        'hidden'
+      );
+
+  }
+
+
+  if (objetivosPage) {
+
+    objetivosPage
+      .classList
+      .add(
+        'hidden'
+      );
+
+  }
+
+
+  if (relatoriosPage) {
+
+    relatoriosPage
+      .classList
+      .add(
+        'hidden'
+      );
+
+  }
+
+
+  document
+    .querySelector('.app')
+    ?.classList
+    .add(
+      'hidden'
+    );
+
+
+  ajustesPage
+    .classList
+    .remove(
+      'hidden'
+    );
+
+
+  marcarNavAtiva(4);
+
+
+  preencherPaginaAjustes();
+
+}
+
+
+/* -----------------------------------------------------
+   CRIAR
+   ----------------------------------------------------- */
+
+function criarPaginaAjustes() {
+
+  if (ajustesPage) {
+    return;
+  }
+
+
+  ajustesPage =
+    document.createElement(
+      'div'
+    );
+
+
+  ajustesPage.id =
+    'ajustesPage';
+
+
+  ajustesPage.className =
+    'finance-page hidden';
+
+
+  ajustesPage.innerHTML = `
+
+    <header
+      class="finance-page-header"
+    >
+
+      <div>
+
+        <p class="eyebrow">
+          MEU FINANCEIRO
+        </p>
+
+        <h1>
+          Ajustes
+        </h1>
+
+        <p class="finance-page-subtitle">
+          Personalize o aplicativo do seu jeito
+        </p>
+
+      </div>
+
+
+      <button
+        class="finance-back-btn"
+        id="backAjustesBtn"
+        type="button"
+        aria-label="Voltar"
+      >
+        ←
+      </button>
+
+    </header>
+
+
+    <section
+      class="settings-card"
+    >
+
+      <div
+        class="settings-card-icon"
+      >
+        👤
+      </div>
+
+
+      <div
+        class="settings-card-content"
+      >
+
+        <span
+          class="settings-label"
+        >
+          Minha conta
+        </span>
+
+
+        <strong
+          id="settingsUserName"
+        >
+          —
+        </strong>
+
+
+        <small
+          id="settingsUserEmail"
+        >
+          —
+        </small>
+
+      </div>
+
+    </section>
+
+
+    <section
+      class="settings-card settings-row-card"
+    >
+
+      <div
+        class="settings-leading"
+      >
+
+        <span
+          class="settings-card-icon"
+        >
+          🎨
+        </span>
+
+
+        <div>
+
+          <strong>
+            Aparência
+          </strong>
+
+          <small>
+            Escolha como o aplicativo aparece
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="settings-theme-toggle"
+        role="group"
+        aria-label="Tema"
+      >
+
+        <button
+          type="button"
+          data-theme="dark"
+          id="settingsThemeDark"
+        >
+          🌙
+          Escuro
+        </button>
+
+
+        <button
+          type="button"
+          data-theme="light"
+          id="settingsThemeLight"
+        >
+          ☀️
+          Claro
+        </button>
+
+      </div>
+
+    </section>
+
+
+    <section
+      class="settings-card"
+    >
+
+      <div
+        class="settings-leading"
+      >
+
+        <span
+          class="settings-card-icon"
+        >
+          🗂️
+        </span>
+
+
+        <div>
+
+          <strong>
+            Espaço financeiro
+          </strong>
+
+          <small>
+            Escolha de qual espaço você quer ver os dados
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <label
+        class="settings-field"
+      >
+
+        <span>
+          Espaço atual
+        </span>
+
+
+        <select
+          id="settingsScopeSelect"
+        ></select>
+
+      </label>
+
+    </section>
+
+
+    <section
+      class="settings-card"
+    >
+
+      <div
+        class="settings-leading"
+      >
+
+        <span
+          class="settings-card-icon"
+        >
+          ℹ️
+        </span>
+
+
+        <div>
+
+          <strong>
+            Sobre o aplicativo
+          </strong>
+
+          <small>
+            Meu Financeiro · versão 1.0
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="settings-about"
+      >
+
+        <span>
+          Seus dados financeiros continuam vinculados à sua planilha.
+        </span>
+
+      </div>
+
+    </section>
+
+
+    <button
+      class="settings-logout"
+      id="settingsLogoutBtn"
+      type="button"
+    >
+      🚪 Sair da conta
+    </button>
+
+  `;
+
+
+  document
+    .getElementById(
+      'app'
+    )
+    ?.appendChild(
+      ajustesPage
+    );
+
+
+  document
+    .getElementById(
+      'backAjustesBtn'
+    )
+    ?.addEventListener(
+      'click',
+      voltarInicio
+    );
+
+
+  document
+    .getElementById(
+      'settingsThemeDark'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        aplicarTemaAjustes(
+          'dark'
+        )
+    );
+
+
+  document
+    .getElementById(
+      'settingsThemeLight'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        aplicarTemaAjustes(
+          'light'
+        )
+    );
+
+
+  document
+    .getElementById(
+      'settingsScopeSelect'
+    )
+    ?.addEventListener(
+      'change',
+      event =>
+        trocarEscopo(
+          event.target.value
+        )
+    );
+
+
+  document
+    .getElementById(
+      'settingsLogoutBtn'
+    )
+    ?.addEventListener(
+      'click',
+      logout
+    );
+
+}
+
+
+/* -----------------------------------------------------
+   PREENCHER
+   ----------------------------------------------------- */
+
+function preencherPaginaAjustes() {
+
+  const name =
+    document.getElementById(
+      'settingsUserName'
+    );
+
+
+  const email =
+    document.getElementById(
+      'settingsUserEmail'
+    );
+
+
+  if (name) {
+
+    name.textContent =
+      state.user?.nome ||
+      state.user?.name ||
+      'Usuário';
+
+  }
+
+
+  if (email) {
+
+    email.textContent =
+      state.user?.email ||
+      '';
+
+  }
+
+
+  const select =
+    document.getElementById(
+      'settingsScopeSelect'
+    );
+
+
+  if (select) {
+
+    const escopos =
+      Array.isArray(
+        state.initialData?.escopos
+      )
+        ? state.initialData.escopos
+        : [];
+
+
+    select.innerHTML =
+      escopos
+        .map(
+          escopo => `
+
+            <option
+              value="${
+                escapeAttribute(
+                  escopo.nome
+                )
+              }"
+            >
+              ${
+                escapeHtml(
+                  escopo.nome
+                )
+              }
+            </option>
+
+          `
+        )
+        .join('');
+
+
+    if (
+      state.escopo
+    ) {
+
+      select.value =
+        state.escopo;
+
+    }
+
+  }
+
+
+  atualizarBotoesTemaAjustes();
+
+}
+
+
+/* -----------------------------------------------------
+   TEMA
+   ----------------------------------------------------- */
+
+function aplicarTemaAjustes(
+  tema
+) {
+
+  if (
+    tema ===
+    'light'
+  ) {
+
+    root.classList.add(
+      'light'
+    );
+
+
+    localStorage.setItem(
+      'financeiro-theme',
+      'light'
+    );
+
+  } else {
+
+    root.classList.remove(
+      'light'
+    );
+
+
+    localStorage.setItem(
+      'financeiro-theme',
+      'dark'
+    );
+
+  }
+
+
+  atualizarBotoesTemaAjustes();
+
+}
+
+
+function atualizarBotoesTemaAjustes() {
+
+  const light =
+    root.classList.contains(
+      'light'
+    );
+
+
+  document
+    .getElementById(
+      'settingsThemeDark'
+    )
+    ?.classList
+    .toggle(
+      'active',
+      !light
+    );
+
+
+  document
+    .getElementById(
+      'settingsThemeLight'
+    )
+    ?.classList
+    .toggle(
+      'active',
+      light
+    );
 
 }
