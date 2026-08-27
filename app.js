@@ -1081,42 +1081,65 @@ function showApp(
 }
 function inicializarGoogle() {
 
-  if (
-    !window.google?.accounts?.id
-  ) {
-
-    setTimeout(
-      inicializarGoogle,
-      150
+  const status =
+    document.getElementById(
+      'loginStatus'
     );
-
-    return;
-  }
-
-  google.accounts.id.initialize({
-
-    client_id:
-      CLIENT_ID,
-
-    callback:
-      handleCredentialResponse,
-
-    auto_select:
-      false,
-
-    ux_mode:
-      'popup',
-
-    context:
-      'signin'
-  });
 
   const button =
     document.getElementById(
       'googleButton'
     );
 
-  if (button) {
+  if (!button) {
+
+    console.error(
+      'Elemento #googleButton não foi encontrado.'
+    );
+
+    return;
+  }
+
+  if (
+    !window.google?.accounts?.id
+  ) {
+
+    if (status) {
+
+      status.textContent =
+        'Carregando login do Google...';
+    }
+
+    setTimeout(
+      inicializarGoogle,
+      250
+    );
+
+    return;
+  }
+
+  try {
+
+    google.accounts.id.initialize({
+
+      client_id:
+        CLIENT_ID,
+
+      callback:
+        handleCredentialResponse,
+
+      auto_select:
+        false,
+
+      ux_mode:
+        'popup',
+
+      context:
+        'signin'
+
+    });
+
+    button.innerHTML = '';
 
     google.accounts.id.renderButton(
       button,
@@ -1136,8 +1159,27 @@ function inicializarGoogle() {
 
         width:
           300
+
       }
     );
+
+    if (status) {
+
+      status.textContent = '';
+    }
+
+  } catch (error) {
+
+    console.error(
+      'Erro ao inicializar Google:',
+      error
+    );
+
+    if (status) {
+
+      status.textContent =
+        'Não foi possível carregar o login do Google. Tente atualizar a página.';
+    }
   }
 }
 
@@ -4517,21 +4559,45 @@ async function excluirObjetivoDaPagina(
    INICIALIZAÇÃO DO APP
    ===================================================== */
 
-document.addEventListener(
-  'DOMContentLoaded',
-  () => {
+let appInicializado = false;
 
-    /*
-     * Inicializa o botão do Google.
-     * A função espera o script do Google estar disponível.
-     */
-    inicializarGoogle();
+function iniciarAplicacao() {
 
-    /*
-     * Se existir uma sessão salva, tenta restaurá-la.
-     * Caso o token não seja válido, o login permanece disponível.
-     */
-    restaurarSessao();
-
+  if (appInicializado) {
+    return;
   }
-);
+
+  appInicializado = true;
+
+  if (
+    typeof configurarEventos ===
+    'function'
+  ) {
+
+    configurarEventos();
+  }
+
+  inicializarGoogle();
+
+  restaurarSessao();
+
+}
+
+
+if (
+  document.readyState ===
+  'loading'
+) {
+
+  document.addEventListener(
+    'DOMContentLoaded',
+    iniciarAplicacao,
+    {
+      once: true
+    }
+  );
+
+} else {
+
+  iniciarAplicacao();
+}
