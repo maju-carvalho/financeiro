@@ -1629,9 +1629,7 @@ function configurarEventos() {
               index === 3
             ) {
 
-              alert(
-                'A aba Relatórios será conectada na próxima etapa.'
-              );
+              abrirPaginaRelatorios();
 
               return;
 
@@ -6296,5 +6294,1035 @@ function fecharModalAporte() {
       'modalAporte'
     )
     ?.remove();
+
+}
+
+
+/* =====================================================
+   PÁGINA DE RELATÓRIOS
+   ===================================================== */
+
+let relatoriosPage = null;
+
+
+/* -----------------------------------------------------
+   ABRIR RELATÓRIOS
+   ----------------------------------------------------- */
+
+async function abrirPaginaRelatorios() {
+
+  criarPaginaRelatorios();
+
+
+  if (lancamentosPage) {
+
+    lancamentosPage
+      .classList
+      .add(
+        'hidden'
+      );
+
+  }
+
+
+  if (objetivosPage) {
+
+    objetivosPage
+      .classList
+      .add(
+        'hidden'
+      );
+
+  }
+
+
+  document
+    .querySelector('.app')
+    ?.classList
+    .add(
+      'hidden'
+    );
+
+
+  relatoriosPage
+    .classList
+    .remove(
+      'hidden'
+    );
+
+
+  marcarNavAtiva(3);
+
+
+  /*
+   * Não fazemos uma consulta específica de relatório
+   * ao backend nesta primeira versão.
+   *
+   * Usamos o histórico de lançamentos que já está
+   * em memória. Se ainda não estiver carregado,
+   * carregamos uma única vez.
+   */
+  if (
+    !state.lancamentosCarregados
+  ) {
+
+    const lista =
+      document.getElementById(
+        'relatoriosConteudo'
+      );
+
+
+    if (lista) {
+
+      lista.innerHTML = `
+        <div class="launch-loading">
+          Preparando relatório...
+        </div>
+      `;
+
+    }
+
+
+    await carregarLancamentos();
+
+  }
+
+
+  renderPaginaRelatorios();
+
+}
+
+
+/* -----------------------------------------------------
+   CRIAR PÁGINA
+   ----------------------------------------------------- */
+
+function criarPaginaRelatorios() {
+
+  if (relatoriosPage) {
+    return;
+  }
+
+
+  relatoriosPage =
+    document.createElement(
+      'div'
+    );
+
+
+  relatoriosPage.id =
+    'relatoriosPage';
+
+
+  relatoriosPage.className =
+    'finance-page hidden';
+
+
+  relatoriosPage.innerHTML = `
+
+    <header
+      class="finance-page-header"
+    >
+
+      <div>
+
+        <p class="eyebrow">
+          MEU FINANCEIRO
+        </p>
+
+        <h1>
+          Relatórios
+        </h1>
+
+        <p class="finance-page-subtitle">
+          Entenda para onde está indo seu dinheiro
+        </p>
+
+      </div>
+
+
+      <button
+        class="finance-back-btn"
+        id="backRelatoriosBtn"
+        type="button"
+        aria-label="Voltar"
+      >
+        ←
+      </button>
+
+    </header>
+
+
+    <section
+      class="report-filters"
+    >
+
+      <div
+        class="report-filter-row"
+      >
+
+        <label>
+
+          Período
+
+          <select
+            id="relatorioPeriodo"
+          >
+
+            <option value="MES">
+              Este mês
+            </option>
+
+            <option value="TRIMESTRE">
+              Últimos 3 meses
+            </option>
+
+            <option value="ANO">
+              Este ano
+            </option>
+
+            <option value="TUDO">
+              Todo o histórico
+            </option>
+
+          </select>
+
+        </label>
+
+
+        <button
+          id="atualizarRelatorioBtn"
+          class="report-refresh-btn"
+          type="button"
+        >
+          ↻ Atualizar
+        </button>
+
+      </div>
+
+    </section>
+
+
+    <section
+      id="relatorioCards"
+      class="report-summary-grid"
+    ></section>
+
+
+    <section
+      class="report-section-card"
+    >
+
+      <div
+        class="report-section-title"
+      >
+
+        <div>
+
+          <p>
+            Despesas por categoria
+          </p>
+
+          <small>
+            Onde seu dinheiro está sendo gasto
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div
+        id="relatorioCategorias"
+        class="report-bars"
+      ></div>
+
+    </section>
+
+
+    <section
+      class="report-section-card"
+    >
+
+      <div
+        class="report-section-title"
+      >
+
+        <div>
+
+          <p>
+            Formas de pagamento
+          </p>
+
+          <small>
+            Como suas despesas foram pagas
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div
+        id="relatorioFormas"
+        class="report-bars"
+      ></div>
+
+    </section>
+
+
+    <section
+      class="report-section-card"
+    >
+
+      <div
+        class="report-section-title"
+      >
+
+        <div>
+
+          <p>
+            Maiores despesas
+          </p>
+
+          <small>
+            As despesas de maior valor no período
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div
+        id="relatorioMaiores"
+        class="report-big-list"
+      ></div>
+
+    </section>
+
+
+    <div
+      id="relatoriosConteudo"
+      class="hidden"
+    ></div>
+
+  `;
+
+
+  document
+    .getElementById(
+      'app'
+    )
+    ?.appendChild(
+      relatoriosPage
+    );
+
+
+  document
+    .getElementById(
+      'backRelatoriosBtn'
+    )
+    ?.addEventListener(
+      'click',
+      voltarInicio
+    );
+
+
+  document
+    .getElementById(
+      'atualizarRelatorioBtn'
+    )
+    ?.addEventListener(
+      'click',
+      renderPaginaRelatorios
+    );
+
+
+  document
+    .getElementById(
+      'relatorioPeriodo'
+    )
+    ?.addEventListener(
+      'change',
+      renderPaginaRelatorios
+    );
+
+}
+
+
+/* -----------------------------------------------------
+   PERÍODO
+   ----------------------------------------------------- */
+
+function obterIntervaloRelatorio() {
+
+  const periodo =
+    document.getElementById(
+      'relatorioPeriodo'
+    )?.value ||
+    'MES';
+
+
+  const hoje =
+    new Date();
+
+
+  let inicio;
+
+
+  if (
+    periodo ===
+    'TRIMESTRE'
+  ) {
+
+    inicio =
+      new Date(
+        hoje.getFullYear(),
+        hoje.getMonth() - 2,
+        1
+      );
+
+  } else if (
+    periodo ===
+    'ANO'
+  ) {
+
+    inicio =
+      new Date(
+        hoje.getFullYear(),
+        0,
+        1
+      );
+
+  } else if (
+    periodo ===
+    'TUDO'
+  ) {
+
+    return {
+      inicio:
+        null,
+
+      fim:
+        null
+    };
+
+  } else {
+
+    inicio =
+      new Date(
+        hoje.getFullYear(),
+        hoje.getMonth(),
+        1
+      );
+
+  }
+
+
+  const fim =
+    new Date(
+      hoje.getFullYear(),
+      hoje.getMonth() + 1,
+      0,
+      23,
+      59,
+      59
+    );
+
+
+  return {
+    inicio,
+    fim
+  };
+
+}
+
+
+/* -----------------------------------------------------
+   CONVERTER DATA
+   ----------------------------------------------------- */
+
+function dataLancamentoRelatorio(
+  valor
+) {
+
+  if (!valor) {
+    return null;
+  }
+
+
+  const partes =
+    String(
+      valor
+    ).split('-');
+
+
+  if (
+    partes.length !== 3
+  ) {
+    return null;
+  }
+
+
+  const data =
+    new Date(
+      Number(partes[0]),
+      Number(partes[1]) - 1,
+      Number(partes[2])
+    );
+
+
+  return Number.isNaN(
+    data.getTime()
+  )
+    ? null
+    : data;
+
+}
+
+
+/* -----------------------------------------------------
+   RENDER
+   ----------------------------------------------------- */
+
+function renderPaginaRelatorios() {
+
+  if (!relatoriosPage) {
+    return;
+  }
+
+
+  const intervalo =
+    obterIntervaloRelatorio();
+
+
+  let lancamentos =
+    Array.isArray(
+      state.lancamentos
+    )
+      ? [
+          ...state.lancamentos
+        ]
+      : [];
+
+
+  if (
+    intervalo.inicio &&
+    intervalo.fim
+  ) {
+
+    lancamentos =
+      lancamentos.filter(
+        item => {
+
+          const data =
+            dataLancamentoRelatorio(
+              item.data
+            );
+
+
+          if (!data) {
+            return false;
+          }
+
+
+          return (
+            data >=
+            intervalo.inicio &&
+            data <=
+            intervalo.fim
+          );
+
+        }
+      );
+
+  }
+
+
+  const receitas =
+    lancamentos
+      .filter(
+        item =>
+          item.tipo ===
+          'RECEITA'
+      );
+
+
+  const despesas =
+    lancamentos
+      .filter(
+        item =>
+          item.tipo ===
+          'DESPESA'
+      );
+
+
+  const totalReceitas =
+    receitas.reduce(
+      (
+        total,
+        item
+      ) =>
+        total +
+        Number(
+          item.valor || 0
+        ),
+      0
+    );
+
+
+  const totalDespesas =
+    despesas.reduce(
+      (
+        total,
+        item
+      ) =>
+        total +
+        Number(
+          item.valor || 0
+        ),
+      0
+    );
+
+
+  const resultado =
+    totalReceitas -
+    totalDespesas;
+
+
+  const maiorDespesa =
+    despesas.length
+      ? Math.max(
+          ...despesas.map(
+            item =>
+              Number(
+                item.valor || 0
+              )
+          )
+        )
+      : 0;
+
+
+  /*
+   * Cards principais
+   */
+  const cards =
+    document.getElementById(
+      'relatorioCards'
+    );
+
+
+  if (cards) {
+
+    cards.innerHTML = `
+
+      <article
+        class="report-summary-card"
+      >
+
+        <span
+          class="report-summary-icon"
+        >
+          💰
+        </span>
+
+
+        <small>
+          Receitas
+        </small>
+
+
+        <strong
+          class="positive"
+        >
+          ${formatMoney(
+            totalReceitas
+          )}
+        </strong>
+
+      </article>
+
+
+      <article
+        class="report-summary-card"
+      >
+
+        <span
+          class="report-summary-icon"
+        >
+          💸
+        </span>
+
+
+        <small>
+          Despesas
+        </small>
+
+
+        <strong
+          class="negative"
+        >
+          ${formatMoney(
+            totalDespesas
+          )}
+        </strong>
+
+      </article>
+
+
+      <article
+        class="report-summary-card"
+      >
+
+        <span
+          class="report-summary-icon"
+        >
+          📊
+        </span>
+
+
+        <small>
+          Resultado
+        </small>
+
+
+        <strong
+          class="${
+            resultado >= 0
+              ? 'positive'
+              : 'negative'
+          }"
+        >
+          ${formatMoney(
+            resultado
+          )}
+        </strong>
+
+      </article>
+
+
+      <article
+        class="report-summary-card"
+      >
+
+        <span
+          class="report-summary-icon"
+        >
+          🧾
+        </span>
+
+
+        <small>
+          Lançamentos
+        </small>
+
+
+        <strong>
+          ${lancamentos.length}
+        </strong>
+
+      </article>
+
+    `;
+
+  }
+
+
+  /*
+   * Categorias
+   */
+  const categorias =
+    {};
+
+
+  despesas.forEach(
+    item => {
+
+      const categoria =
+        item.categoria ||
+        'Outros';
+
+
+      categorias[categoria] =
+        (
+          categorias[categoria] ||
+          0
+        ) +
+        Number(
+          item.valor || 0
+        );
+
+    }
+  );
+
+
+  const categoriasOrdenadas =
+    Object.entries(
+      categorias
+    )
+      .sort(
+        (a, b) =>
+          b[1] -
+          a[1]
+      );
+
+
+  renderBarrasRelatorio(
+    'relatorioCategorias',
+    categoriasOrdenadas,
+    totalDespesas
+  );
+
+
+  /*
+   * Formas de pagamento
+   */
+  const formas =
+    {};
+
+
+  despesas.forEach(
+    item => {
+
+      const forma =
+        item.formaPagamento ||
+        'Não informado';
+
+
+      formas[forma] =
+        (
+          formas[forma] ||
+          0
+        ) +
+        Number(
+          item.valor || 0
+        );
+
+    }
+  );
+
+
+  renderBarrasRelatorio(
+    'relatorioFormas',
+    Object.entries(
+      formas
+    ).sort(
+      (a, b) =>
+        b[1] -
+        a[1]
+    ),
+    totalDespesas
+  );
+
+
+  /*
+   * Maiores despesas
+   */
+  const maiores =
+    despesas
+      .sort(
+        (a, b) =>
+          Number(
+            b.valor || 0
+          ) -
+          Number(
+            a.valor || 0
+          )
+      )
+      .slice(
+        0,
+        10
+      );
+
+
+  const maioresContainer =
+    document.getElementById(
+      'relatorioMaiores'
+    );
+
+
+  if (
+    maioresContainer
+  ) {
+
+    if (!maiores.length) {
+
+      maioresContainer.innerHTML = `
+        <div class="report-empty">
+          Nenhuma despesa no período selecionado.
+        </div>
+      `;
+
+    } else {
+
+      maioresContainer.innerHTML =
+        maiores
+          .map(
+            item => `
+
+              <div
+                class="report-big-item"
+              >
+
+                <span
+                  class="report-big-icon"
+                >
+                  ${iconeCategoria(
+                    item.categoria
+                  )}
+                </span>
+
+
+                <div
+                  class="report-big-info"
+                >
+
+                  <strong>
+                    ${escapeHtml(
+                      item.descricao ||
+                      'Sem descrição'
+                    )}
+                  </strong>
+
+
+                  <small>
+                    ${escapeHtml(
+                      item.categoria ||
+                      'Outros'
+                    )}
+                    ·
+                    ${formatDate(
+                      item.data
+                    )}
+                  </small>
+
+                </div>
+
+
+                <strong
+                  class="negative"
+                >
+                  − ${formatMoney(
+                    item.valor
+                  )}
+                </strong>
+
+              </div>
+
+            `
+          )
+          .join('');
+
+    }
+
+  }
+
+}
+
+
+/* -----------------------------------------------------
+   BARRAS
+   ----------------------------------------------------- */
+
+function renderBarrasRelatorio(
+  elementoId,
+  entradas,
+  total
+) {
+
+  const container =
+    document.getElementById(
+      elementoId
+    );
+
+
+  if (!container) {
+    return;
+  }
+
+
+  if (!entradas.length) {
+
+    container.innerHTML = `
+      <div class="report-empty">
+        Nenhum dado no período selecionado.
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  container.innerHTML =
+    entradas
+      .slice(
+        0,
+        8
+      )
+      .map(
+        ([nome, valor]) => {
+
+          const percentual =
+            total > 0
+              ? (
+                  Number(valor) /
+                  total
+                ) *
+                100
+              : 0;
+
+
+          return `
+
+            <div
+              class="report-bar-item"
+            >
+
+              <div
+                class="report-bar-label"
+              >
+
+                <span>
+                  ${escapeHtml(
+                    nome
+                  )}
+                </span>
+
+
+                <strong>
+                  ${formatMoney(
+                    valor
+                  )}
+                </strong>
+
+              </div>
+
+
+              <div
+                class="report-bar-track"
+              >
+
+                <i
+                  style="
+                    width:${percentual}%
+                  "
+                ></i>
+
+              </div>
+
+
+              <small>
+                ${percentual.toFixed(1)}%
+              </small>
+
+            </div>
+
+          `;
+
+        }
+      )
+      .join('');
 
 }
