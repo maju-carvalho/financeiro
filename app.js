@@ -50,9 +50,7 @@ const state = {
 
   lancamentosCarregando: null,
 
-  dashboardCarregado: false,
-
-  objetivosCarregados: false
+  dashboardCarregado: false
 
 };
 
@@ -745,6 +743,11 @@ async function carregarLancamentos(
     ).length > 0;
 
 
+  /*
+   * Cache:
+   * se já temos todos os lançamentos nesta sessão,
+   * não consultamos o servidor novamente.
+   */
   if (
     state.lancamentosCarregados &&
     !forcarAtualizacao &&
@@ -756,6 +759,10 @@ async function carregarLancamentos(
   }
 
 
+  /*
+   * Se uma consulta já estiver em andamento,
+   * reutilizamos a mesma Promise.
+   */
   if (
     state.lancamentosCarregando &&
     !forcarAtualizacao
@@ -771,46 +778,25 @@ async function carregarLancamentos(
 
       try {
 
-        const resposta =
+        const data =
           await api(
             'listarLancamentos',
             {
               ...filtros,
+
               escopo:
                 state.escopo
             }
           );
 
 
-        /*
-         * Normaliza as três formas possíveis de retorno:
-         *   [...]
-         *   { lancamentos: [...] }
-         *   { data: { lancamentos: [...] } }
-         */
         const lista =
-          Array.isArray(
-            resposta
-          )
-            ? resposta
-            : (
-                Array.isArray(
-                  resposta?.lancamentos
-                )
-                  ? resposta.lancamentos
-                  : (
-                      Array.isArray(
-                        resposta?.data?.lancamentos
-                      )
-                        ? resposta.data.lancamentos
-                        : []
-                    )
-              );
+          Array.isArray(data)
+            ? data
+            : [];
 
 
-        if (
-          !possuiFiltros
-        ) {
+        if (!possuiFiltros) {
 
           state.lancamentos =
             lista;
@@ -851,6 +837,892 @@ async function carregarLancamentos(
 
 
   return state.lancamentosCarregando;
+
+}
+
+
+/* =====================================================
+   USUÁRIO / ESCOPO
+   ===================================================== */
+
+
+/* =====================================================
+   USUÁRIO / ESCOPO
+   ===================================================== */
+
+function atualizarInterfaceUsuario() {
+
+  if (!state.user) {
+    return;
+  }
+
+  const first =
+    (
+      state.user.nome ||
+      state.user.name ||
+      'Usuário'
+    )
+    .split(' ')[0];
+
+  const greeting =
+    document.getElementById(
+      'greeting'
+    );
+
+  if (greeting) {
+
+    greeting.textContent =
+      `Olá, ${first} 👋`;
+  }
+
+  const signed =
+    document.getElementById(
+      'signedUser'
+    );
+
+  if (signed) {
+
+    signed.textContent =
+      state.user.email ||
+      '';
+  }
+
+  /*
+   * Tenta atualizar o seletor
+   * de espaço, caso a interface
+   * já possua um.
+   */
+
+  atualizarSeletorEscopo();
+}
+
+
+function atualizarSeletorEscopo() {
+
+  /*
+   * A interface atual ainda não possui
+   * o seletor definitivo.
+   *
+   * Quando adicionarmos o componente,
+   * esta função já estará pronta para
+   * receber os espaços.
+   */
+
+  const seletor =
+    document.getElementById(
+      'scopeSelect'
+    );
+
+  if (!seletor) {
+    return;
+  }
+
+  const escopos =
+    state.initialData?.escopos ||
+    [];
+
+  seletor.innerHTML =
+    escopos
+      .map(
+        escopo => `
+          <option
+            value="${escapeAttribute(
+              escopo.nome
+            )}"
+          >
+            ${escapeHtml(
+              escopo.nome
+            )}
+          </option>
+        `
+      )
+      .join('');
+
+  seletor.value =
+    state.escopo;
+}
+
+
+async function trocarEscopo(
+  escopo
+) {
+
+  if (!escopo) {
+    return;
+  }
+
+
+  state.escopo =
+    escopo;
+
+
+  /*
+   * Mudou o espaço: o cache antigo não serve.
+   */
+  state.lancamentos =
+    [];
+
+  state.lancamentosCarregados =
+    false;
+
+  state.lancamentosCarregando =
+    null;
+
+
+  state.dashboard =
+    null;
+
+  state.dashboardCarregado =
+    false;
+
+
+  await Promise.all([
+    carregarDashboard(true),
+    carregarLancamentos({}, true)
+  ]);
+
+
+  if (
+    objetivosPage &&
+    !objetivosPage.classList.contains(
+      'hidden'
+    )
+  ) {
+
+    await carregarObjetivos();
+
+    renderPaginaObjetivos();
+
+  }
+
+
+  if (
+    lancamentosPage &&
+    !lancamentosPage.classList.contains(
+      'hidden'
+    )
+  ) {
+
+    preencherFiltroMeses();
+
+    atualizarCategoriasFiltro();
+
+    await atualizarListaLancamentosPage();
+
+  }
+
+}
+
+function configurarTema() {
+
+  const button =
+    document.getElementById(
+      'themeBtn'
+    );
+
+  if (!button) {
+    return;
+  }
+
+  button.addEventListener(
+    'click',
+    () => {
+
+      root.classList.toggle(
+        'light'
+      );
+
+      localStorage.setItem(
+        'financeiro-theme',
+        root.classList.contains(
+          'light'
+        )
+          ? 'light'
+          : 'dark'
+      );
+    }
+  );
+}
+
+
+/* =====================================================
+   LOGOUT
+   ===================================================== */
+
+function logout() {
+
+  state.user = null;
+
+  state.token = null;
+
+  state.initialData = null;
+
+  state.dashboard = null;
+
+  state.escopo = null;
+
+  localStorage.removeItem(
+    'financeiro-google-token'
+  );
+
+  document
+    .getElementById(
+      'app'
+    )
+    ?.classList.add(
+      'hidden'
+    );
+
+  document
+    .getElementById(
+      'loginScreen'
+    )
+    ?.classList.remove(
+      'hidden'
+    );
+
+  if (
+    window.google?.accounts?.id
+  ) {
+
+    google.accounts.id.disableAutoSelect();
+  }
+}
+
+
+/* =====================================================
+   MOSTRAR APP
+   ===================================================== */
+
+function showApp(
+  user
+) {
+
+  document
+    .getElementById(
+      'loginScreen'
+    )
+    ?.classList.add(
+      'hidden'
+    );
+
+  document
+    .getElementById(
+      'app'
+    )
+    ?.classList.remove(
+      'hidden'
+    );
+
+  atualizarInterfaceUsuario();
+}
+
+
+/* =====================================================
+   GOOGLE INITIALIZATION
+   ===================================================== */
+
+function inicializarGoogle() {
+
+  const status =
+    document.getElementById(
+      'loginStatus'
+    );
+
+
+  const button =
+    document.getElementById(
+      'googleButton'
+    );
+
+
+  if (!button) {
+
+    console.error(
+      'Elemento #googleButton não foi encontrado.'
+    );
+
+    return;
+
+  }
+
+
+  if (
+    !window.google?.accounts?.id
+  ) {
+
+    if (status) {
+
+      status.textContent =
+        'Carregando login do Google...';
+
+    }
+
+
+    setTimeout(
+      inicializarGoogle,
+      250
+    );
+
+
+    return;
+
+  }
+
+
+  try {
+
+    google.accounts.id.initialize({
+
+      client_id:
+        CLIENT_ID,
+
+      callback:
+        handleCredentialResponse,
+
+      auto_select:
+        false,
+
+      ux_mode:
+        'popup',
+
+      context:
+        'signin'
+
+    });
+
+
+    button.innerHTML =
+      '';
+
+
+    google.accounts.id.renderButton(
+      button,
+      {
+
+        theme:
+          'filled_black',
+
+        size:
+          'large',
+
+        shape:
+          'pill',
+
+        text:
+          'continue_with',
+
+        width:
+          300
+
+      }
+    );
+
+
+    if (status) {
+
+      status.textContent =
+        '';
+
+    }
+
+
+  } catch (error) {
+
+    console.error(
+      'Erro ao inicializar Google:',
+      error
+    );
+
+
+    if (status) {
+
+      status.textContent =
+        'Não foi possível carregar o login do Google. Tente atualizar a página.';
+
+    }
+
+  }
+
+}
+
+
+/* =====================================================
+   AUTO LOGIN DA SESSÃO
+   ===================================================== */
+
+async function restaurarSessao() {
+
+  const token =
+    localStorage.getItem(
+      'financeiro-google-token'
+    );
+
+  if (!token) {
+    return;
+  }
+
+  const payload =
+    parseJwt(
+      token
+    );
+
+  if (!payload) {
+
+    localStorage.removeItem(
+      'financeiro-google-token'
+    );
+
+    return;
+  }
+
+  /*
+   * Não usamos o token apenas como
+   * "login visual".
+   *
+   * A API também vai validar o token.
+   */
+
+  state.token =
+    token;
+
+  state.user = {
+
+    sub:
+      payload.sub,
+
+    name:
+      payload.name ||
+      payload.given_name ||
+      'Usuário',
+
+    email:
+      payload.email ||
+      '',
+
+    picture:
+      payload.picture ||
+      '',
+
+    credential:
+      token
+  };
+
+  showApp(
+    state.user
+  );
+
+  try {
+
+    await carregarAplicacao();
+
+  } catch (error) {
+
+    console.error(
+      error
+    );
+
+    logout();
+  }
+}
+
+
+/* =====================================================
+   UTILITÁRIOS
+   ===================================================== */
+
+function formatMoney(
+  value
+) {
+
+  return Number(
+    value || 0
+  ).toLocaleString(
+    'pt-BR',
+    {
+      style:
+        'currency',
+
+      currency:
+        'BRL'
+    }
+  );
+}
+
+
+function formatDate(
+  value
+) {
+
+  if (!value) {
+    return '';
+  }
+
+  const parts =
+    String(value)
+      .split('-');
+
+  if (
+    parts.length === 3
+  ) {
+
+    return (
+      parts[2] +
+      '/' +
+      parts[1]
+    );
+  }
+
+  return value;
+}
+
+
+function iconeCategoria(
+  categoria
+) {
+
+  const mapa = {
+
+    'Alimentação':
+      '🍔',
+
+    'Mercado':
+      '🛒',
+
+    'Moradia':
+      '🏠',
+
+    'Educação':
+      '📚',
+
+    'Transporte':
+      '🚗',
+
+    'Saúde':
+      '💊',
+
+    'Lazer':
+      '🎮',
+
+    'Assinaturas':
+      '🔄',
+
+    'Compras':
+      '🛍️',
+
+    'Contas':
+      '🧾',
+
+    'Salário':
+      '💰',
+
+    'Renda extra':
+      '💵'
+  };
+
+  return (
+    mapa[categoria] ||
+    '💸'
+  );
+}
+
+
+function escapeHtml(
+  value
+) {
+
+  return String(
+    value ?? ''
+  )
+    .replace(
+      /&/g,
+      '&amp;'
+    )
+    .replace(
+      /</g,
+      '&lt;'
+    )
+    .replace(
+      />/g,
+      '&gt;'
+    )
+    .replace(
+      /"/g,
+      '&quot;'
+    )
+    .replace(
+      /'/g,
+      '&#039;'
+    );
+}
+
+
+function escapeAttribute(
+  value
+) {
+
+  return escapeHtml(
+    value
+  );
+}
+
+
+function mostrarCarregando(
+  ativo
+) {
+
+  document.body
+    .classList.toggle(
+      'loading',
+      ativo
+    );
+}
+
+
+function mostrarErro(
+  mensagem
+) {
+
+  console.error(
+    mensagem
+  );
+
+  const status =
+    document.getElementById(
+      'loginStatus'
+    );
+
+  if (
+    status &&
+    !state.user
+  ) {
+
+    status.textContent =
+      mensagem;
+  }
+}
+
+
+/* =====================================================
+   EVENTOS
+   ===================================================== */
+
+function configurarEventos() {
+
+  configurarTema();
+
+
+  document
+    .getElementById(
+      'logoutBtn'
+    )
+    ?.addEventListener(
+      'click',
+      logout
+    );
+
+
+  document
+    .querySelector('.fab')
+    ?.addEventListener(
+      'click',
+      () =>
+        abrirPaginaLancamentos(
+          true
+        )
+    );
+
+
+  document
+    .getElementById(
+      'quickNovoLancamento'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        abrirPaginaLancamentos(
+          true
+        )
+    );
+
+
+  document
+    .getElementById(
+      'quickRecorrentes'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        abrirPaginaLancamentos(
+          false,
+          true
+        )
+    );
+
+
+  document
+    .getElementById(
+      'verTodosObjetivosBtn'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        abrirPaginaObjetivos()
+    );
+
+
+  document
+    .getElementById(
+      'verTodosLancamentosBtn'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        abrirPaginaLancamentos(
+          false
+        )
+    );
+
+
+  /*
+   * Navegação inferior.
+   */
+  document
+    .querySelectorAll(
+      '.bottom-nav button'
+    )
+    .forEach(
+      (button, index) => {
+
+        button.addEventListener(
+          'click',
+          () => {
+
+            if (
+              index === 0
+            ) {
+
+              voltarInicio();
+
+              return;
+
+            }
+
+
+            if (
+              index === 1
+            ) {
+
+              abrirPaginaLancamentos(
+                false
+              );
+
+              return;
+
+            }
+
+
+            if (
+              index === 2
+            ) {
+
+              abrirPaginaObjetivos();
+
+              return;
+
+            }
+
+
+            if (
+              index === 3
+            ) {
+
+              alert(
+                'A aba Relatórios será conectada na próxima etapa.'
+              );
+
+              return;
+
+            }
+
+
+            if (
+              index === 4
+            ) {
+
+              alert(
+                'A aba Ajustes será conectada na próxima etapa.'
+              );
+
+            }
+
+          }
+        );
+
+      }
+    );
+
+
+  document
+    .getElementById(
+      'scopeSelect'
+    )
+    ?.addEventListener(
+      'change',
+      event =>
+        trocarEscopo(
+          event.target.value
+        )
+    );
+
+}
+
+
+/* =====================================================
+   INICIALIZAÇÃO
+   ===================================================== */
+
+let appInicializado = false;
+
+
+function iniciarAplicacao() {
+
+  if (appInicializado) {
+    return;
+  }
+
+
+  appInicializado =
+    true;
+
+
+  configurarEventos();
+
+
+  inicializarGoogle();
+
+
+  restaurarSessao();
+
+}
+
+
+if (
+  document.readyState ===
+  'loading'
+) {
+
+  document.addEventListener(
+    'DOMContentLoaded',
+    iniciarAplicacao,
+    {
+      once: true
+    }
+  );
+
+} else {
+
+  iniciarAplicacao();
 
 }
 
@@ -3811,13 +4683,21 @@ async function salvarRecorrenteFormulario(
 let objetivosPage = null;
 
 
+/* =====================================================
+   ABRIR OBJETIVOS
+   ===================================================== */
+
 async function abrirPaginaObjetivos() {
 
   criarPaginaObjetivos();
 
 
   if (lancamentosPage) {
-    lancamentosPage.classList.add('hidden');
+
+    lancamentosPage
+      .classList
+      .add('hidden');
+
   }
 
 
@@ -3835,65 +4715,30 @@ async function abrirPaginaObjetivos() {
   document
     .querySelector('.bottom-nav')
     ?.classList
-    .remove('lancamentos-open');
+    .remove(
+      'lancamentos-open'
+    );
 
 
   document
     .querySelector('.bottom-nav')
     ?.classList
-    .add('objetivos-open');
+    .add(
+      'objetivos-open'
+    );
 
 
   marcarNavAtiva(2);
-
-
-  if (
-    !state.objetivosCarregados
-  ) {
-
-    const lista =
-      document.getElementById(
-        'listaObjetivosPage'
-      );
-
-
-    if (lista) {
-
-      lista.innerHTML = `
-        <div class="launch-loading">
-          Carregando objetivos...
-        </div>
-      `;
-
-    }
-
-
-    try {
-
-      await carregarObjetivos(
-        false
-      );
-
-    } catch (error) {
-
-      console.error(
-        'Objetivos:',
-        error
-      );
-
-      mostrarErro(
-        error.message
-      );
-
-    }
-
-  }
 
 
   renderPaginaObjetivos();
 
 }
 
+
+/* =====================================================
+   CRIAR PÁGINA
+   ===================================================== */
 
 function criarPaginaObjetivos() {
 
@@ -3942,6 +4787,7 @@ function criarPaginaObjetivos() {
       <button
         class="finance-back-btn"
         id="backObjetivosBtn"
+        aria-label="Voltar"
         type="button"
       >
         ←
@@ -4002,7 +4848,9 @@ function criarPaginaObjetivos() {
 
 
   document
-    .getElementById('app')
+    .getElementById(
+      'app'
+    )
     ?.appendChild(
       objetivosPage
     );
@@ -4031,58 +4879,32 @@ function criarPaginaObjetivos() {
 }
 
 
-async function carregarObjetivos(
-  forcarAtualizacao = false
-) {
+/* =====================================================
+   OBJETIVOS
+   ===================================================== */
 
-  if (
-    state.objetivosCarregados &&
-    !forcarAtualizacao
-  ) {
+async function carregarObjetivos() {
 
-    return state.objetivos;
-
-  }
-
-
-  const resposta =
+  const data =
     await api(
       'listarObjetivos'
     );
 
 
-  const lista =
-    Array.isArray(
-      resposta
-    )
-      ? resposta
-      : (
-          Array.isArray(
-            resposta?.objetivos
-          )
-            ? resposta.objetivos
-            : (
-                Array.isArray(
-                  resposta?.data?.objetivos
-                )
-                  ? resposta.data.objetivos
-                  : []
-              )
-        );
-
-
   state.objetivos =
-    lista;
-
-
-  state.objetivosCarregados =
-    true;
+    Array.isArray(data)
+      ? data
+      : [];
 
 
   return state.objetivos;
 
 }
 
+
+/* =====================================================
+   ÍCONE DO OBJETIVO
+   ===================================================== */
 
 function iconeObjetivo(
   nome
@@ -4099,7 +4921,9 @@ function iconeObjetivo(
     texto.includes('carro') ||
     texto.includes('moto') ||
     texto.includes('veículo')
-  ) return '🚗';
+  ) {
+    return '🚗';
+  }
 
 
   if (
@@ -4107,39 +4931,53 @@ function iconeObjetivo(
     texto.includes('celular') ||
     texto.includes('telefone') ||
     texto.includes('smartphone')
-  ) return '📱';
+  ) {
+    return '📱';
+  }
 
 
   if (
     texto.includes('casa') ||
     texto.includes('apartamento') ||
     texto.includes('imóvel')
-  ) return '🏠';
+  ) {
+    return '🏠';
+  }
 
 
   if (
     texto.includes('viagem') ||
     texto.includes('férias')
-  ) return '✈️';
+  ) {
+    return '✈️';
+  }
 
 
   if (
     texto.includes('faculdade') ||
     texto.includes('curso') ||
     texto.includes('estudo')
-  ) return '🎓';
+  ) {
+    return '🎓';
+  }
 
 
   if (
     texto.includes('reserva') ||
     texto.includes('emergência')
-  ) return '🛟';
+  ) {
+    return '🛟';
+  }
 
 
   return '🎯';
 
 }
 
+
+/* =====================================================
+   RENDER DOS OBJETIVOS
+   ===================================================== */
 
 function renderPaginaObjetivos() {
 
@@ -4181,10 +5019,24 @@ function renderPaginaObjetivos() {
   if (!objetivos.length) {
 
     lista.innerHTML = `
-      <div class="launch-empty">
-        <span>🎯</span>
-        <strong>Nenhum objetivo encontrado</strong>
-        <small>Crie seu primeiro objetivo financeiro.</small>
+
+      <div
+        class="launch-empty"
+      >
+
+        <span>
+          🎯
+        </span>
+
+        <strong>
+          Nenhum objetivo encontrado
+        </strong>
+
+        <small>
+          Crie seu primeiro objetivo financeiro.
+        </small>
+
+
         <button
           class="primary-action"
           type="button"
@@ -4192,11 +5044,12 @@ function renderPaginaObjetivos() {
         >
           ＋ Novo objetivo
         </button>
+
       </div>
+
     `;
 
     return;
-
   }
 
 
@@ -4220,6 +5073,14 @@ function renderPaginaObjetivos() {
             );
 
 
+          const falta =
+            Math.max(
+              meta -
+              guardado,
+              0
+            );
+
+
           const percentual =
             Math.max(
               0,
@@ -4229,7 +5090,11 @@ function renderPaginaObjetivos() {
                   objetivo.percentual ||
                   (
                     meta > 0
-                      ? guardado / meta * 100
+                      ? (
+                          guardado /
+                          meta
+                        ) *
+                        100
                       : 0
                   )
                 )
@@ -4243,13 +5108,21 @@ function renderPaginaObjetivos() {
 
           return `
 
-            <article class="objective-card">
+            <article
+              class="objective-card"
+            >
 
-              <div class="objective-card-top">
+              <div
+                class="objective-card-top"
+              >
 
-                <div class="objective-title">
+                <div
+                  class="objective-title"
+                >
 
-                  <span class="objective-icon">
+                  <span
+                    class="objective-icon"
+                  >
                     ${iconeObjetivo(
                       objetivo.nome
                     )}
@@ -4279,7 +5152,9 @@ function renderPaginaObjetivos() {
                 </div>
 
 
-                <b class="objective-percent">
+                <b
+                  class="objective-percent"
+                >
                   ${Math.round(
                     percentual
                   )}%
@@ -4288,20 +5163,29 @@ function renderPaginaObjetivos() {
               </div>
 
 
-              <div class="objective-progress">
+              <div
+                class="objective-progress"
+              >
+
                 <i
-                  style="width:${percentual}%"
+                  style="
+                    width:${percentual}%
+                  "
                 ></i>
+
               </div>
 
 
-              <div class="objective-values">
+              <div
+                class="objective-values"
+              >
 
                 <strong>
                   ${formatMoney(
                     guardado
                   )}
                 </strong>
+
 
                 <span>
                   de
@@ -4313,16 +5197,15 @@ function renderPaginaObjetivos() {
               </div>
 
 
-              <div class="objective-detail">
+              <div
+                class="objective-detail"
+              >
 
                 <span>
                   Falta:
                   <b>
                     ${formatMoney(
-                      Math.max(
-                        meta - guardado,
-                        0
-                      )
+                      falta
                     )}
                   </b>
                 </span>
@@ -4341,7 +5224,30 @@ function renderPaginaObjetivos() {
               </div>
 
 
-              <div class="objective-actions-row">
+              <div
+                class="objective-status-row"
+              >
+
+                <span
+                  class="${
+                    concluido
+                      ? 'objective-complete'
+                      : 'objective-active'
+                  }"
+                >
+                  ${
+                    concluido
+                      ? '✓ Concluído'
+                      : '● Em andamento'
+                  }
+                </span>
+
+              </div>
+
+
+              <div
+                class="objective-actions-row"
+              >
 
                 ${
                   !concluido
@@ -4372,6 +5278,7 @@ function renderPaginaObjetivos() {
                       objetivo.id
                     )
                   }"
+                  aria-label="Editar objetivo"
                   title="Editar objetivo"
                 >
                   ✏️
@@ -4387,6 +5294,7 @@ function renderPaginaObjetivos() {
                       objetivo.id
                     )
                   }"
+                  aria-label="Excluir objetivo"
                   title="Excluir objetivo"
                 >
                   🗑️
@@ -4449,5 +5357,980 @@ function renderPaginaObjetivos() {
             )
         )
     );
+
+}
+
+
+/* =====================================================
+   FORMULÁRIO DE OBJETIVO
+   ===================================================== */
+
+function abrirFormularioObjetivo(
+  id = null
+) {
+
+  const existente =
+    id
+      ? state.objetivos.find(
+          item =>
+            String(item.id) ===
+            String(id)
+        )
+      : null;
+
+
+  document
+    .getElementById(
+      'modalObjetivo'
+    )
+    ?.remove();
+
+
+  const modal =
+    document.createElement(
+      'div'
+    );
+
+
+  modal.id =
+    'modalObjetivo';
+
+
+  modal.className =
+    'finance-modal';
+
+
+  modal.innerHTML = `
+
+    <div
+      class="finance-modal-backdrop"
+      id="objetivoModalBackdrop"
+    ></div>
+
+
+    <div
+      class="finance-modal-card"
+    >
+
+      <header
+        class="finance-modal-header"
+      >
+
+        <div>
+
+          <p class="eyebrow">
+            ${
+              existente
+                ? 'EDITAR OBJETIVO'
+                : 'NOVO OBJETIVO'
+            }
+          </p>
+
+
+          <h2>
+            ${
+              existente
+                ? 'Editar objetivo'
+                : 'Criar objetivo'
+            }
+          </h2>
+
+        </div>
+
+
+        <button
+          class="modal-close"
+          id="fecharModalObjetivo"
+          type="button"
+        >
+          ×
+        </button>
+
+      </header>
+
+
+      <form
+        id="formObjetivo"
+      >
+
+        <label>
+          Nome
+
+          <input
+            id="objetivoNome"
+            type="text"
+            placeholder="Ex.: Viagem"
+            value="${
+              escapeAttribute(
+                existente?.nome ||
+                ''
+              )
+            }"
+            required
+          >
+        </label>
+
+
+        <div
+          class="form-grid"
+        >
+
+          <label>
+            Meta
+
+            <input
+              id="objetivoMeta"
+              type="number"
+              min="0.01"
+              step="0.01"
+              placeholder="0,00"
+              value="${
+                existente?.meta ??
+                ''
+              }"
+              required
+            >
+          </label>
+
+
+          <label>
+            Valor inicial
+
+            <input
+              id="objetivoValorInicial"
+              type="number"
+              min="0"
+              step="0.01"
+              value="${
+                existente?.valorInicial ??
+                0
+              }"
+            >
+          </label>
+
+        </div>
+
+
+        <div
+          class="form-grid"
+        >
+
+          <label>
+            Prazo
+
+            <input
+              id="objetivoPrazo"
+              type="date"
+              value="${
+                existente?.prazo ||
+                ''
+              }"
+            >
+          </label>
+
+
+          <label>
+            Prioridade
+
+            <select
+              id="objetivoPrioridade"
+            >
+
+              <option
+                value="Baixa"
+                ${
+                  existente?.prioridade ===
+                  'Baixa'
+                    ? 'selected'
+                    : ''
+                }
+              >
+                Baixa
+              </option>
+
+
+              <option
+                value="Média"
+                ${
+                  !existente ||
+                  existente?.prioridade ===
+                  'Média'
+                    ? 'selected'
+                    : ''
+                }
+              >
+                Média
+              </option>
+
+
+              <option
+                value="Alta"
+                ${
+                  existente?.prioridade ===
+                  'Alta'
+                    ? 'selected'
+                    : ''
+                }
+              >
+                Alta
+              </option>
+
+            </select>
+
+          </label>
+
+        </div>
+
+
+        <label>
+          Observação
+
+          <textarea
+            id="objetivoObservacao"
+            rows="3"
+            placeholder="Opcional"
+          >${
+            escapeHtml(
+              existente?.observacao ||
+              ''
+            )
+          }</textarea>
+
+        </label>
+
+
+        <div
+          id="objetivoFormErro"
+          class="form-error"
+        ></div>
+
+
+        <button
+          type="submit"
+          class="primary-action"
+        >
+          ${
+            existente
+              ? 'Salvar alterações'
+              : 'Criar objetivo'
+          }
+        </button>
+
+      </form>
+
+    </div>
+
+  `;
+
+
+  document
+    .getElementById(
+      'app'
+    )
+    ?.appendChild(
+      modal
+    );
+
+
+  document
+    .getElementById(
+      'fecharModalObjetivo'
+    )
+    ?.addEventListener(
+      'click',
+      fecharModalObjetivo
+    );
+
+
+  document
+    .getElementById(
+      'objetivoModalBackdrop'
+    )
+    ?.addEventListener(
+      'click',
+      fecharModalObjetivo
+    );
+
+
+  document
+    .getElementById(
+      'formObjetivo'
+    )
+    ?.addEventListener(
+      'submit',
+      event =>
+        salvarObjetivoFormulario(
+          event,
+          id
+        )
+    );
+
+}
+
+
+/* =====================================================
+   SALVAR OBJETIVO
+   ===================================================== */
+
+async function salvarObjetivoFormulario(
+  event,
+  id = null
+) {
+
+  event.preventDefault();
+
+
+  const erro =
+    document.getElementById(
+      'objetivoFormErro'
+    );
+
+
+  const button =
+    document
+      .getElementById(
+        'formObjetivo'
+      )
+      ?.querySelector(
+        'button[type="submit"]'
+      );
+
+
+  try {
+
+    if (erro) {
+      erro.textContent = '';
+    }
+
+
+    if (button) {
+
+      button.disabled =
+        true;
+
+      button.textContent =
+        id
+          ? 'Salvando alterações...'
+          : 'Criando...';
+
+    }
+
+
+    const existente =
+      id
+        ? state.objetivos.find(
+            item =>
+              String(item.id) ===
+              String(id)
+          )
+        : null;
+
+
+    const dados = {
+
+      id:
+        id || undefined,
+
+      escopo:
+        state.escopo,
+
+      nome:
+        document
+          .getElementById(
+            'objetivoNome'
+          )
+          .value
+          .trim(),
+
+      meta:
+        Number(
+          document
+            .getElementById(
+              'objetivoMeta'
+            )
+            .value
+        ),
+
+      valorInicial:
+        Number(
+          document
+            .getElementById(
+              'objetivoValorInicial'
+            )
+            .value ||
+          0
+        ),
+
+      dataCriacao:
+        existente?.dataCriacao ||
+        undefined,
+
+      prazo:
+        document
+          .getElementById(
+            'objetivoPrazo'
+          )
+          .value,
+
+      prioridade:
+        document
+          .getElementById(
+            'objetivoPrioridade'
+          )
+          .value,
+
+      observacao:
+        document
+          .getElementById(
+            'objetivoObservacao'
+          )
+          .value
+          .trim(),
+
+      ativo:
+        true
+
+    };
+
+
+    if (!dados.nome) {
+
+      throw new Error(
+        'Informe o nome do objetivo.'
+      );
+
+    }
+
+
+    if (
+      !dados.meta ||
+      dados.meta <= 0
+    ) {
+
+      throw new Error(
+        'Informe uma meta maior que zero.'
+      );
+
+    }
+
+
+    await api(
+      'salvarObjetivo',
+      dados,
+      'POST'
+    );
+
+
+    fecharModalObjetivo();
+
+
+    await carregarObjetivos();
+
+
+    state.dashboard =
+      null;
+
+    state.dashboardCarregado =
+      false;
+
+
+    renderPaginaObjetivos();
+
+
+    await carregarDashboard(
+      true
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      'Salvar objetivo:',
+      error
+    );
+
+
+    if (erro) {
+
+      erro.textContent =
+        error.message ||
+        'Não foi possível salvar o objetivo.';
+
+    }
+
+  } finally {
+
+    if (button) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        id
+          ? 'Salvar alterações'
+          : 'Criar objetivo';
+
+    }
+
+  }
+
+}
+
+
+/* =====================================================
+   APORTES
+   ===================================================== */
+
+function abrirModalAporte(
+  objetivoId
+) {
+
+  const objetivo =
+    state.objetivos.find(
+      item =>
+        String(item.id) ===
+        String(objetivoId)
+    );
+
+
+  if (!objetivo) {
+
+    alert(
+      'Objetivo não encontrado.'
+    );
+
+    return;
+
+  }
+
+
+  document
+    .getElementById(
+      'modalAporte'
+    )
+    ?.remove();
+
+
+  const modal =
+    document.createElement(
+      'div'
+    );
+
+
+  modal.id =
+    'modalAporte';
+
+
+  modal.className =
+    'finance-modal';
+
+
+  modal.innerHTML = `
+
+    <div
+      class="finance-modal-backdrop"
+      id="aporteBackdrop"
+    ></div>
+
+
+    <div
+      class="finance-modal-card"
+    >
+
+      <header
+        class="finance-modal-header"
+      >
+
+        <div>
+
+          <p class="eyebrow">
+            ${escapeHtml(
+              objetivo.nome
+            )}
+          </p>
+
+          <h2>
+            Adicionar dinheiro
+          </h2>
+
+        </div>
+
+
+        <button
+          class="modal-close"
+          id="fecharModalAporte"
+          type="button"
+        >
+          ×
+        </button>
+
+      </header>
+
+
+      <form
+        id="formAporte"
+      >
+
+        <label>
+          Valor
+
+          <input
+            id="aporteValor"
+            type="number"
+            min="0.01"
+            step="0.01"
+            placeholder="0,00"
+            required
+          >
+        </label>
+
+
+        <label>
+          Data
+
+          <input
+            id="aporteData"
+            type="date"
+            value="${
+              new Date()
+                .toISOString()
+                .split('T')[0]
+            }"
+            required
+          >
+        </label>
+
+
+        <label>
+          Observação
+
+          <textarea
+            id="aporteObservacao"
+            rows="3"
+            placeholder="Opcional"
+          ></textarea>
+        </label>
+
+
+        <div
+          id="aporteErro"
+          class="form-error"
+        ></div>
+
+
+        <button
+          type="submit"
+          class="primary-action"
+        >
+          Adicionar dinheiro
+        </button>
+
+      </form>
+
+    </div>
+
+  `;
+
+
+  document
+    .getElementById(
+      'app'
+    )
+    ?.appendChild(
+      modal
+    );
+
+
+  document
+    .getElementById(
+      'fecharModalAporte'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        modal.remove()
+    );
+
+
+  document
+    .getElementById(
+      'aporteBackdrop'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        modal.remove()
+    );
+
+
+  document
+    .getElementById(
+      'formAporte'
+    )
+    ?.addEventListener(
+      'submit',
+      event =>
+        salvarAporte(
+          event,
+          objetivoId
+        )
+    );
+
+}
+
+
+async function salvarAporte(
+  event,
+  objetivoId
+) {
+
+  event.preventDefault();
+
+
+  const erro =
+    document.getElementById(
+      'aporteErro'
+    );
+
+
+  const button =
+    document
+      .getElementById(
+        'formAporte'
+      )
+      ?.querySelector(
+        'button[type="submit"]'
+      );
+
+
+  try {
+
+    if (erro) {
+      erro.textContent = '';
+    }
+
+
+    if (button) {
+
+      button.disabled =
+        true;
+
+      button.textContent =
+        'Salvando...';
+
+    }
+
+
+    const valor =
+      Number(
+        document
+          .getElementById(
+            'aporteValor'
+          )
+          .value
+      );
+
+
+    if (
+      !valor ||
+      valor <= 0
+    ) {
+
+      throw new Error(
+        'Informe um valor maior que zero.'
+      );
+
+    }
+
+
+    await api(
+      'adicionarAporte',
+      {
+
+        objetivoId:
+          objetivoId,
+
+        valor:
+          valor,
+
+        data:
+          document
+            .getElementById(
+              'aporteData'
+            )
+            .value,
+
+        observacao:
+          document
+            .getElementById(
+              'aporteObservacao'
+            )
+            .value
+            .trim()
+
+      },
+      'POST'
+    );
+
+
+    document
+      .getElementById(
+        'modalAporte'
+      )
+      ?.remove();
+
+
+    await carregarObjetivos();
+
+
+    state.dashboard =
+      null;
+
+    state.dashboardCarregado =
+      false;
+
+
+    renderPaginaObjetivos();
+
+
+    await carregarDashboard(
+      true
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      'Aporte:',
+      error
+    );
+
+
+    if (erro) {
+
+      erro.textContent =
+        error.message ||
+        'Não foi possível adicionar o aporte.';
+
+    }
+
+  } finally {
+
+    if (button) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        'Adicionar dinheiro';
+
+    }
+
+  }
+
+}
+
+
+/* =====================================================
+   EXCLUIR OBJETIVO
+   ===================================================== */
+
+async function excluirObjetivoDaPagina(
+  id
+) {
+
+  const objetivo =
+    state.objetivos.find(
+      item =>
+        String(item.id) ===
+        String(id)
+    );
+
+
+  const confirmado =
+    window.confirm(
+      `Excluir "${objetivo?.nome || 'este objetivo'}"?\n\nEssa ação não pode ser desfeita.`
+    );
+
+
+  if (!confirmado) {
+    return;
+  }
+
+
+  try {
+
+    await api(
+      'excluirObjetivo',
+      {
+        id:
+          id
+      },
+      'POST'
+    );
+
+
+    await carregarObjetivos();
+
+
+    state.dashboard =
+      null;
+
+    state.dashboardCarregado =
+      false;
+
+
+    renderPaginaObjetivos();
+
+
+    await carregarDashboard(
+      true
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      'Excluir objetivo:',
+      error
+    );
+
+
+    alert(
+      error.message ||
+      'Não foi possível excluir o objetivo.'
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   FECHAR MODAL DE OBJETIVO
+   ===================================================== */
+
+function fecharModalObjetivo() {
+
+  document
+    .getElementById(
+      'modalObjetivo'
+    )
+    ?.remove();
+
+}
+
+
+/* =====================================================
+   FECHAR MODAL DE APORTE
+   ===================================================== */
+
+function fecharModalAporte() {
+
+  document
+    .getElementById(
+      'modalAporte'
+    )
+    ?.remove();
 
 }
