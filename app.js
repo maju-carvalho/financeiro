@@ -1277,12 +1277,10 @@ function configurarEventos() {
             return;
           }
 
-          if (index === 2) {
-            alert(
-              'A aba Objetivos será conectada na próxima etapa.'
-            );
-            return;
-          }
+         if (index === 2) {
+  abrirPaginaObjetivos();
+  return;
+}
 
           if (index === 3) {
             alert(
@@ -1393,6 +1391,12 @@ function voltarInicio() {
     );
   }
 
+  if (objetivosPage) {
+    objetivosPage.classList.add(
+      'hidden'
+    );
+  }
+
   document
     .querySelector('.app')
     ?.classList.remove('hidden');
@@ -1400,7 +1404,8 @@ function voltarInicio() {
   document
     .querySelector('.bottom-nav')
     ?.classList.remove(
-      'lancamentos-open'
+      'lancamentos-open',
+      'objetivos-open'
     );
 
   marcarNavAtiva(0);
@@ -2814,4 +2819,770 @@ function marcarNavAtiva(
     ?.classList.add(
       'active'
     );
+}
+
+/* =====================================================
+   PÁGINA DE OBJETIVOS
+   ===================================================== */
+
+let objetivosPage = null;
+
+
+/* =====================================================
+   ABRIR OBJETIVOS
+   ===================================================== */
+
+async function abrirPaginaObjetivos() {
+
+  criarPaginaObjetivos();
+
+  document
+    .querySelector('.app')
+    ?.classList.add('hidden');
+
+  document
+    .querySelector('.bottom-nav')
+    ?.classList.add('objetivos-open');
+
+  objetivosPage.classList.remove('hidden');
+
+  marcarNavAtiva(2);
+
+  renderPaginaObjetivos();
+}
+
+
+/* =====================================================
+   CRIAR PÁGINA
+   ===================================================== */
+
+function criarPaginaObjetivos() {
+
+  if (objetivosPage) {
+    return;
+  }
+
+  objetivosPage =
+    document.createElement('div');
+
+  objetivosPage.id =
+    'objetivosPage';
+
+  objetivosPage.className =
+    'finance-page hidden';
+
+  objetivosPage.innerHTML = `
+
+    <header class="finance-page-header">
+
+      <div>
+        <p class="eyebrow">
+          MEU FINANCEIRO
+        </p>
+
+        <h1>
+          Objetivos
+        </h1>
+
+        <p class="finance-page-subtitle">
+          Transforme seus planos em conquistas
+        </p>
+      </div>
+
+      <button
+        class="finance-back-btn"
+        id="backObjetivosBtn"
+        aria-label="Voltar"
+      >
+        ←
+      </button>
+
+    </header>
+
+
+    <section class="objective-summary">
+
+      <div class="objective-summary-icon">
+        🎯
+      </div>
+
+      <div>
+        <small>
+          Seus objetivos
+        </small>
+
+        <strong id="objetivosResumo">
+          0 objetivos
+        </strong>
+      </div>
+
+    </section>
+
+
+    <section class="objective-actions">
+
+      <button
+        class="primary-action"
+        id="novoObjetivoBtn"
+      >
+        <span>＋</span>
+        Novo objetivo
+      </button>
+
+    </section>
+
+
+    <section
+      id="listaObjetivosPage"
+      class="objective-list"
+    ></section>
+
+  `;
+
+  document
+    .getElementById('app')
+    ?.appendChild(
+      objetivosPage
+    );
+
+
+  document
+    .getElementById(
+      'backObjetivosBtn'
+    )
+    ?.addEventListener(
+      'click',
+      voltarInicio
+    );
+
+
+  document
+    .getElementById(
+      'novoObjetivoBtn'
+    )
+    ?.addEventListener(
+      'click',
+      abrirFormularioObjetivo
+    );
+}
+
+
+/* =====================================================
+   RENDER OBJETIVOS
+   ===================================================== */
+
+function renderPaginaObjetivos() {
+
+  const lista =
+    document.getElementById(
+      'listaObjetivosPage'
+    );
+
+  const resumo =
+    document.getElementById(
+      'objetivosResumo'
+    );
+
+  if (!lista) {
+    return;
+  }
+
+
+  const objetivos =
+    Array.isArray(
+      state.objetivos
+    )
+      ? state.objetivos
+      : [];
+
+
+  if (resumo) {
+
+    resumo.textContent =
+      objetivos.length === 1
+        ? '1 objetivo'
+        : `${objetivos.length} objetivos`;
+  }
+
+
+  if (!objetivos.length) {
+
+    lista.innerHTML = `
+
+      <div class="launch-empty">
+
+        <span>🎯</span>
+
+        <strong>
+          Nenhum objetivo encontrado
+        </strong>
+
+        <small>
+          Crie seu primeiro objetivo financeiro.
+        </small>
+
+        <button
+          class="primary-action"
+          onclick="abrirFormularioObjetivo()"
+        >
+          Novo objetivo
+        </button>
+
+      </div>
+
+    `;
+
+    return;
+  }
+
+
+  lista.innerHTML =
+    objetivos
+      .map(
+        objetivo => {
+
+          const meta =
+            Number(
+              objetivo.meta || 0
+            );
+
+          const guardado =
+            Number(
+              objetivo.guardado ||
+              objetivo.valorInicial ||
+              0
+            );
+
+
+          const percentual =
+            Math.max(
+              0,
+              Math.min(
+                100,
+                Number(
+                  objetivo.percentual ||
+                  (
+                    meta > 0
+                      ? (
+                          guardado /
+                          meta
+                        ) *
+                        100
+                      : 0
+                  )
+                )
+              )
+            );
+
+
+          const prioridade =
+            objetivo.prioridade ||
+            'Média';
+
+
+          const prazo =
+            objetivo.prazo
+              ? formatDate(
+                  objetivo.prazo
+                )
+              : 'Sem prazo';
+
+
+          return `
+
+            <article
+              class="objective-card"
+            >
+
+              <div
+                class="objective-card-top"
+              >
+
+                <div
+                  class="objective-title"
+                >
+
+                  <span
+                    class="objective-icon"
+                  >
+                    🎯
+                  </span>
+
+                  <div>
+
+                    <strong>
+                      ${escapeHtml(
+                        objetivo.nome ||
+                        'Objetivo'
+                      )}
+                    </strong>
+
+                    <small>
+                      Prioridade:
+                      ${escapeHtml(
+                        prioridade
+                      )}
+                    </small>
+
+                  </div>
+
+                </div>
+
+
+                <b
+                  class="objective-percent"
+                >
+                  ${Math.round(
+                    percentual
+                  )}%
+                </b>
+
+              </div>
+
+
+              <div
+                class="objective-progress"
+              >
+
+                <i
+                  style="
+                    width:${percentual}%
+                  "
+                ></i>
+
+              </div>
+
+
+              <div
+                class="objective-values"
+              >
+
+                <span>
+                  ${formatMoney(
+                    guardado
+                  )}
+                </span>
+
+                <span>
+                  de
+                  ${formatMoney(
+                    meta
+                  )}
+                </span>
+
+              </div>
+
+
+              <div
+                class="objective-footer"
+              >
+
+                <span>
+                  📅 ${prazo}
+                </span>
+
+                <span>
+                  ${percentual >= 100
+                    ? '✓ Concluído'
+                    : 'Em andamento'}
+                </span>
+
+              </div>
+
+            </article>
+
+          `;
+
+        }
+      )
+      .join('');
+}
+
+
+/* =====================================================
+   NOVO OBJETIVO
+   ===================================================== */
+
+function abrirFormularioObjetivo() {
+
+  const existente =
+    document.getElementById(
+      'modalObjetivo'
+    );
+
+  if (existente) {
+    existente.remove();
+  }
+
+
+  const hoje =
+    new Date()
+      .toISOString()
+      .split('T')[0];
+
+
+  const modal =
+    document.createElement('div');
+
+  modal.id =
+    'modalObjetivo';
+
+  modal.className =
+    'finance-modal';
+
+
+  modal.innerHTML = `
+
+    <div
+      class="finance-modal-backdrop"
+      id="objetivoModalBackdrop"
+    ></div>
+
+
+    <div
+      class="finance-modal-card"
+    >
+
+      <header
+        class="finance-modal-header"
+      >
+
+        <div>
+
+          <p class="eyebrow">
+            NOVO OBJETIVO
+          </p>
+
+          <h2>
+            Criar objetivo
+          </h2>
+
+        </div>
+
+
+        <button
+          class="modal-close"
+          id="fecharModalObjetivo"
+        >
+          ×
+        </button>
+
+      </header>
+
+
+      <form
+        id="formObjetivo"
+      >
+
+        <label>
+
+          Nome
+
+          <input
+            id="objetivoNome"
+            type="text"
+            placeholder="Ex.: Viagem"
+            required
+          >
+
+        </label>
+
+
+        <div
+          class="form-grid"
+        >
+
+          <label>
+
+            Meta
+
+            <input
+              id="objetivoMeta"
+              type="number"
+              min="0.01"
+              step="0.01"
+              placeholder="0,00"
+              required
+            >
+
+          </label>
+
+
+          <label>
+
+            Valor inicial
+
+            <input
+              id="objetivoValorInicial"
+              type="number"
+              min="0"
+              step="0.01"
+              value="0"
+            >
+
+          </label>
+
+        </div>
+
+
+        <div
+          class="form-grid"
+        >
+
+          <label>
+
+            Prazo
+
+            <input
+              id="objetivoPrazo"
+              type="date"
+            >
+
+          </label>
+
+
+          <label>
+
+            Prioridade
+
+            <select
+              id="objetivoPrioridade"
+            >
+
+              <option value="Baixa">
+                Baixa
+              </option>
+
+              <option
+                value="Média"
+                selected
+              >
+                Média
+              </option>
+
+              <option value="Alta">
+                Alta
+              </option>
+
+            </select>
+
+          </label>
+
+        </div>
+
+
+        <label>
+
+          Observação
+
+          <textarea
+            id="objetivoObservacao"
+            rows="3"
+            placeholder="Opcional"
+          ></textarea>
+
+        </label>
+
+
+        <div
+          id="objetivoFormErro"
+          class="form-error"
+        ></div>
+
+
+        <button
+          type="submit"
+          class="primary-action"
+        >
+          Criar objetivo
+        </button>
+
+      </form>
+
+    </div>
+
+  `;
+
+
+  document
+    .getElementById('app')
+    ?.appendChild(
+      modal
+    );
+
+
+  document
+    .getElementById(
+      'fecharModalObjetivo'
+    )
+    ?.addEventListener(
+      'click',
+      fecharModalObjetivo
+    );
+
+
+  document
+    .getElementById(
+      'objetivoModalBackdrop'
+    )
+    ?.addEventListener(
+      'click',
+      fecharModalObjetivo
+    );
+
+
+  document
+    .getElementById(
+      'formObjetivo'
+    )
+    ?.addEventListener(
+      'submit',
+      salvarObjetivoFormulario
+    );
+}
+
+
+/* =====================================================
+   FECHAR MODAL
+   ===================================================== */
+
+function fecharModalObjetivo() {
+
+  document
+    .getElementById(
+      'modalObjetivo'
+    )
+    ?.remove();
+}
+
+
+/* =====================================================
+   SALVAR OBJETIVO
+   ===================================================== */
+
+async function salvarObjetivoFormulario(
+  event
+) {
+
+  event.preventDefault();
+
+  const erro =
+    document.getElementById(
+      'objetivoFormErro'
+    );
+
+
+  try {
+
+    if (erro) {
+      erro.textContent = '';
+    }
+
+
+    const dados = {
+
+      escopo:
+        state.escopo,
+
+      nome:
+        document
+          .getElementById(
+            'objetivoNome'
+          )
+          .value
+          .trim(),
+
+      meta:
+        Number(
+          document
+            .getElementById(
+              'objetivoMeta'
+            )
+            .value
+        ),
+
+      valorInicial:
+        Number(
+          document
+            .getElementById(
+              'objetivoValorInicial'
+            )
+            .value || 0
+        ),
+
+      prazo:
+        document
+          .getElementById(
+            'objetivoPrazo'
+          )
+          .value,
+
+      prioridade:
+        document
+          .getElementById(
+            'objetivoPrioridade'
+          )
+          .value,
+
+      observacao:
+        document
+          .getElementById(
+            'objetivoObservacao'
+          )
+          .value
+          .trim()
+
+    };
+
+
+    if (!dados.nome) {
+
+      throw new Error(
+        'Informe o nome do objetivo.'
+      );
+
+    }
+
+
+    if (
+      !dados.meta ||
+      dados.meta <= 0
+    ) {
+
+      throw new Error(
+        'Informe uma meta válida.'
+      );
+
+    }
+
+
+    /*
+     * IMPORTANTE:
+     * Ainda não enviamos para a API.
+     *
+     * O próximo passo será conectar
+     * esta função à ação do Apps Script
+     * responsável por criar objetivos.
+     */
+
+    throw new Error(
+      'A criação de objetivos será conectada ao servidor na próxima etapa.'
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      error
+    );
+
+    if (erro) {
+
+      erro.textContent =
+        error.message;
+
+    }
+
+  }
+
 }
