@@ -3927,3 +3927,444 @@ window.addEventListener(
 
   }
 );
+
+/* =====================================================
+   CACHE DE LANÇAMENTOS - CORREÇÃO
+   COLE TODO ESTE BLOCO NO FINAL DO APP.JS
+   ===================================================== */
+
+
+/* -----------------------------------------------------
+   CONTROLE DO CACHE
+   ----------------------------------------------------- */
+
+state.lancamentosCarregados = false;
+
+state.lancamentosCarregando = null;
+
+
+/* -----------------------------------------------------
+   NOVA FUNÇÃO DE CARREGAMENTO
+   ----------------------------------------------------- */
+
+async function carregarLancamentos(
+  filtros = {},
+  forcarAtualizacao = false
+) {
+
+  /*
+   * Se os lançamentos já foram carregados
+   * nesta sessão e não precisamos atualizar,
+   * devolvemos os dados guardados na memória.
+   */
+  if (
+    state.lancamentosCarregados &&
+    !forcarAtualizacao &&
+    Object.keys(filtros).length === 0
+  ) {
+
+    return state.lancamentos;
+
+  }
+
+
+  /*
+   * Evita fazer duas requisições ao mesmo tempo.
+   *
+   * Se uma requisição já estiver acontecendo,
+   * aguardamos ela terminar.
+   */
+  if (
+    state.lancamentosCarregando &&
+    !forcarAtualizacao
+  ) {
+
+    return state.lancamentosCarregando;
+
+  }
+
+
+  const buscarDados = async () => {
+
+    try {
+
+      const data =
+        await api(
+          'listarLancamentos',
+          {
+            ...filtros,
+
+            escopo:
+              state.escopo
+          }
+        );
+
+
+      /*
+       * Garante que temos sempre um array.
+       */
+      const lista =
+        Array.isArray(data)
+          ? data
+          : [];
+
+
+      /*
+       * Só atualizamos o cache principal
+       * quando a busca foi feita sem filtros.
+       */
+      if (
+        Object.keys(filtros).length === 0
+      ) {
+
+        state.lancamentos =
+          lista;
+
+        state.lancamentosCarregados =
+          true;
+
+      }
+
+
+      return lista;
+
+    } catch (error) {
+
+      console.error(
+        'Lançamentos:',
+        error
+      );
+
+      mostrarErro(
+        error.message
+      );
+
+      return [];
+
+    } finally {
+
+      state.lancamentosCarregando =
+        null;
+
+    }
+
+  };
+
+
+  state.lancamentosCarregando =
+    buscarDados();
+
+
+  return state.lancamentosCarregando;
+
+}
+
+
+/* -----------------------------------------------------
+   ATUALIZA A LISTA USANDO O CACHE
+   ----------------------------------------------------- */
+
+async function atualizarListaLancamentosPage() {
+
+  const lista =
+    document.getElementById(
+      'listaLancamentosPage'
+    );
+
+
+  if (!lista) {
+    return;
+  }
+
+
+  /*
+   * Só mostra carregamento e busca os dados
+   * se eles ainda não foram carregados.
+   */
+  if (!state.lancamentosCarregados) {
+
+    lista.innerHTML = `
+      <div class="launch-loading">
+        Carregando lançamentos...
+      </div>
+    `;
+
+    await carregarLancamentos();
+
+  }
+
+
+  /*
+   * Agora usamos sempre os dados guardados
+   * na memória.
+   */
+  let dados =
+    Array.isArray(
+      state.lancamentos
+    )
+      ? [...state.lancamentos]
+      : [];
+
+
+  const mes =
+    document.getElementById(
+      'filtroMesLancamentos'
+    )?.value ||
+    'TODOS';
+
+
+  const tipo =
+    document.getElementById(
+      'filtroTipoLancamentos'
+    )?.value ||
+    '';
+
+
+  const categoria =
+    document.getElementById(
+      'filtroCategoriaLancamentos'
+    )?.value ||
+    '';
+
+
+  const busca =
+    (
+      document.getElementById(
+        'buscaLancamentos'
+      )?.value ||
+      ''
+    )
+      .trim()
+      .toLowerCase();
+
+
+  /* -------------------------------
+     FILTRO DE MÊS
+     ------------------------------- */
+
+  if (
+    mes !== 'TODOS'
+  ) {
+
+    dados =
+      dados.filter(
+        item =>
+          String(
+            item.data || ''
+          ).startsWith(
+            mes
+          )
+      );
+
+  }
+
+
+  /* -------------------------------
+     FILTRO DE TIPO
+     ------------------------------- */
+
+  if (tipo) {
+
+    dados =
+      dados.filter(
+        item =>
+          item.tipo === tipo
+      );
+
+  }
+
+
+  /* -------------------------------
+     FILTRO DE CATEGORIA
+     ------------------------------- */
+
+  if (categoria) {
+
+    dados =
+      dados.filter(
+        item =>
+          item.categoria ===
+          categoria
+      );
+
+  }
+
+
+  /* -------------------------------
+     BUSCA
+     ------------------------------- */
+
+  if (busca) {
+
+    dados =
+      dados.filter(
+        item => {
+
+          const texto =
+            [
+              item.descricao,
+              item.categoria,
+              item.conta
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase();
+
+
+          return texto.includes(
+            busca
+          );
+
+        }
+      );
+
+  }
+
+
+  /*
+   * Renderiza sem fazer nova requisição.
+   */
+  renderPaginaLancamentos(
+    dados
+  );
+
+}
+
+
+/* -----------------------------------------------------
+   ABRIR LANÇAMENTOS
+   ----------------------------------------------------- */
+
+async function abrirPaginaLancamentos(
+  abrirFormulario = false
+) {
+
+  criarPaginaLancamentos();
+
+
+  /*
+   * Esconde Objetivos.
+   */
+  if (objetivosPage) {
+
+    objetivosPage
+      .classList
+      .add('hidden');
+
+  }
+
+
+  /*
+   * Esconde a página inicial.
+   */
+  document
+    .querySelector('.app')
+    ?.classList
+    .add('hidden');
+
+
+  /*
+   * Mostra Lançamentos.
+   */
+  if (lancamentosPage) {
+
+    lancamentosPage
+      .classList
+      .remove('hidden');
+
+  }
+
+
+  /*
+   * Ajusta a navegação.
+   */
+  document
+    .querySelector('.bottom-nav')
+    ?.classList
+    .remove('objetivos-open');
+
+
+  document
+    .querySelector('.bottom-nav')
+    ?.classList
+    .add('lancamentos-open');
+
+
+  marcarNavAtiva(1);
+
+
+  /*
+   * Aqui está a principal mudança:
+   *
+   * Se já carregou uma vez,
+   * apenas mostra os dados imediatamente.
+   *
+   * Não faz nova chamada à API.
+   */
+  await atualizarListaLancamentosPage();
+
+
+  if (abrirFormulario) {
+
+    abrirFormularioLancamento();
+
+  }
+
+}
+
+
+/* -----------------------------------------------------
+   INVALIDAR CACHE QUANDO NECESSÁRIO
+   ----------------------------------------------------- */
+
+function invalidarCacheLancamentos() {
+
+  state.lancamentos = [];
+
+  state.lancamentosCarregados =
+    false;
+
+  state.lancamentosCarregando =
+    null;
+
+}
+
+
+/* -----------------------------------------------------
+   TROCA DE ESCOPO
+   ----------------------------------------------------- */
+
+async function trocarEscopo(
+  escopo
+) {
+
+  if (!escopo) {
+    return;
+  }
+
+
+  /*
+   * Se o usuário mudou de escopo,
+   * os lançamentos antigos não podem
+   * continuar no cache.
+   */
+  state.escopo =
+    escopo;
+
+
+  invalidarCacheLancamentos();
+
+
+  await carregarDashboard();
+
+
+  /*
+   * Carrega os lançamentos do novo escopo
+   * uma única vez.
+   */
+  await carregarLancamentos(
+    {},
+    true
+  );
+
+}
