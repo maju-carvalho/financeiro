@@ -167,10 +167,12 @@ async function api(
   const url =
     new URL(API_URL);
 
+
   url.searchParams.set(
     'action',
     action
   );
+
 
   if (method === 'GET') {
 
@@ -189,14 +191,19 @@ async function api(
             key,
             value
           );
+
         }
+
       }
     );
+
   }
+
 
   const options = {
 
-    method: method,
+    method:
+      method,
 
     headers: {
 
@@ -205,17 +212,25 @@ async function api(
 
       'Authorization':
         `Bearer ${state.token}`
+
     }
+
   };
+
 
   if (method !== 'GET') {
 
     options.body =
       JSON.stringify({
+
         ...params,
+
         action
+
       });
+
   }
+
 
   const response =
     await fetch(
@@ -223,36 +238,74 @@ async function api(
       options
     );
 
+
   const text =
     await response.text();
 
-  let data;
+
+  let envelope;
+
 
   try {
 
-    data =
-      JSON.parse(text);
+    envelope =
+      JSON.parse(
+        text
+      );
 
   } catch (e) {
 
     throw new Error(
       'A API retornou uma resposta inválida.'
     );
+
   }
+
 
   if (
     !response.ok ||
-    data.ok === false
+    envelope.ok === false
   ) {
 
     throw new Error(
-      data.erro ||
+      envelope.erro ||
       'Erro ao comunicar com o servidor.'
     );
+
   }
 
-  return data;
+
+  /*
+   * O Apps Script agora devolve:
+   *
+   * {
+   *   ok: true,
+   *   data: ...
+   * }
+   *
+   * O restante do frontend trabalha diretamente
+   * com o conteúdo de data.
+   */
+  if (
+    Object.prototype.hasOwnProperty.call(
+      envelope,
+      'data'
+    )
+  ) {
+
+    return envelope.data;
+
+  }
+
+
+  /*
+   * Compatibilidade com qualquer resposta antiga
+   * que já venha sem o envelope "data".
+   */
+  return envelope;
+
 }
+
 
 
 /* =====================================================
@@ -1466,7 +1519,9 @@ function configurarEventos() {
     ?.addEventListener(
       'click',
       () =>
-        abrirPaginaLancamentos(true)
+        abrirPaginaLancamentos(
+          true
+        )
     );
 
 
@@ -1477,7 +1532,9 @@ function configurarEventos() {
     ?.addEventListener(
       'click',
       () =>
-        abrirPaginaLancamentos(true)
+        abrirPaginaLancamentos(
+          true
+        )
     );
 
 
@@ -1501,7 +1558,8 @@ function configurarEventos() {
     )
     ?.addEventListener(
       'click',
-      abrirPaginaObjetivos
+      () =>
+        abrirPaginaObjetivos()
     );
 
 
@@ -1512,7 +1570,9 @@ function configurarEventos() {
     ?.addEventListener(
       'click',
       () =>
-        abrirPaginaLancamentos(false)
+        abrirPaginaLancamentos(
+          false
+        )
     );
 
 
@@ -1530,37 +1590,61 @@ function configurarEventos() {
           'click',
           () => {
 
-            switch (index) {
+            if (
+              index === 0
+            ) {
 
-              case 0:
-                voltarInicio();
-                break;
+              voltarInicio();
 
+              return;
 
-              case 1:
-                abrirPaginaLancamentos(
-                  false
-                );
-                break;
+            }
 
 
-              case 2:
-                abrirPaginaObjetivos();
-                break;
+            if (
+              index === 1
+            ) {
+
+              abrirPaginaLancamentos(
+                false
+              );
+
+              return;
+
+            }
 
 
-              case 3:
-                alert(
-                  'A aba Relatórios será conectada na próxima etapa.'
-                );
-                break;
+            if (
+              index === 2
+            ) {
+
+              abrirPaginaObjetivos();
+
+              return;
+
+            }
 
 
-              case 4:
-                alert(
-                  'A aba Ajustes será conectada na próxima etapa.'
-                );
-                break;
+            if (
+              index === 3
+            ) {
+
+              alert(
+                'A aba Relatórios será conectada na próxima etapa.'
+              );
+
+              return;
+
+            }
+
+
+            if (
+              index === 4
+            ) {
+
+              alert(
+                'A aba Ajustes será conectada na próxima etapa.'
+              );
 
             }
 
