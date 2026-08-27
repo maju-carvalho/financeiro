@@ -1472,16 +1472,3 @@ button {
     min-width: 100%;
   }
 }
-
-
-/* V8 — navegação ativa */
-.bottom-nav button.active {
-  background: var(--primary-soft) !important;
-  color: var(--primary) !important;
-}
-
-.bottom-nav button.active span,
-.bottom-nav button.active small {
-  color: var(--primary) !important;
-  opacity: 1 !important;
-}
