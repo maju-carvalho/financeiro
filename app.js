@@ -4368,3 +4368,1441 @@ async function trocarEscopo(
   );
 
 }
+/* =====================================================
+   OBJETIVOS — VERSÃO FUNCIONAL
+   Cole este bloco no FINAL do app.js
+   ===================================================== */
+
+
+/* =====================================================
+   SALVAR OBJETIVO
+   ===================================================== */
+
+async function salvarObjetivoFormulario(
+  event
+) {
+
+  event.preventDefault();
+
+  const erro =
+    document.getElementById(
+      'objetivoFormErro'
+    );
+
+  const form =
+    document.getElementById(
+      'formObjetivo'
+    );
+
+  const botao =
+    form?.querySelector(
+      'button[type="submit"]'
+    );
+
+
+  try {
+
+    if (erro) {
+      erro.textContent = '';
+    }
+
+
+    if (botao) {
+
+      botao.disabled = true;
+
+      botao.textContent =
+        'Salvando...';
+
+    }
+
+
+    const dados = {
+
+      escopo:
+        state.escopo,
+
+      nome:
+        document
+          .getElementById(
+            'objetivoNome'
+          )
+          .value
+          .trim(),
+
+      meta:
+        Number(
+          document
+            .getElementById(
+              'objetivoMeta'
+            )
+            .value
+        ),
+
+      valorInicial:
+        Number(
+          document
+            .getElementById(
+              'objetivoValorInicial'
+            )
+            .value || 0
+        ),
+
+      prazo:
+        document
+          .getElementById(
+            'objetivoPrazo'
+          )
+          .value,
+
+      prioridade:
+        document
+          .getElementById(
+            'objetivoPrioridade'
+          )
+          .value,
+
+      observacao:
+        document
+          .getElementById(
+            'objetivoObservacao'
+          )
+          .value
+          .trim(),
+
+      ativo:
+        true
+
+    };
+
+
+    if (!dados.nome) {
+
+      throw new Error(
+        'Informe o nome do objetivo.'
+      );
+
+    }
+
+
+    if (
+      !dados.meta ||
+      dados.meta <= 0
+    ) {
+
+      throw new Error(
+        'Informe uma meta maior que zero.'
+      );
+
+    }
+
+
+    if (
+      dados.valorInicial < 0
+    ) {
+
+      throw new Error(
+        'O valor inicial não pode ser negativo.'
+      );
+
+    }
+
+
+    /*
+     * Envia para o Apps Script.
+     *
+     * A API já possui a ação
+     * "salvarObjetivo".
+     */
+    const resposta =
+      await api(
+        'salvarObjetivo',
+        dados,
+        'POST'
+      );
+
+
+    if (
+      !resposta ||
+      resposta.ok === false
+    ) {
+
+      throw new Error(
+        resposta?.erro ||
+        'Não foi possível criar o objetivo.'
+      );
+
+    }
+
+
+    /*
+     * Fecha o modal.
+     */
+    fecharModalObjetivo();
+
+
+    /*
+     * Atualiza os objetivos diretamente
+     * do servidor para refletir o novo dado.
+     */
+    const objetivosAtualizados =
+      await api(
+        'listarObjetivos'
+      );
+
+
+    state.objetivos =
+      Array.isArray(
+        objetivosAtualizados
+      )
+        ? objetivosAtualizados
+        : [];
+
+
+    /*
+     * Mantém o dashboard sincronizado.
+     */
+    state.dashboard =
+      null;
+
+
+    /*
+     * Se a página de objetivos estiver aberta,
+     * redesenha imediatamente.
+     */
+    renderPaginaObjetivos();
+
+
+    /*
+     * Atualiza a tela inicial também.
+     */
+    await carregarDashboard();
+
+
+  } catch (error) {
+
+    console.error(
+      'Salvar objetivo:',
+      error
+    );
+
+
+    if (erro) {
+
+      erro.textContent =
+        error.message ||
+        'Erro ao salvar objetivo.';
+
+    }
+
+  } finally {
+
+    if (botao) {
+
+      botao.disabled = false;
+
+      botao.textContent =
+        'Criar objetivo';
+
+    }
+
+  }
+}
+
+
+/* =====================================================
+   RENDER OBJETIVOS
+   ===================================================== */
+
+function renderPaginaObjetivos() {
+
+  const lista =
+    document.getElementById(
+      'listaObjetivosPage'
+    );
+
+  const resumo =
+    document.getElementById(
+      'objetivosResumo'
+    );
+
+  if (!lista) {
+    return;
+  }
+
+
+  const objetivos =
+    Array.isArray(
+      state.objetivos
+    )
+      ? state.objetivos
+      : [];
+
+
+  if (resumo) {
+
+    resumo.textContent =
+      objetivos.length === 1
+        ? '1 objetivo'
+        : `${objetivos.length} objetivos`;
+
+  }
+
+
+  if (!objetivos.length) {
+
+    lista.innerHTML = `
+
+      <div class="launch-empty">
+
+        <span>
+          🎯
+        </span>
+
+        <strong>
+          Nenhum objetivo encontrado
+        </strong>
+
+        <small>
+          Crie seu primeiro objetivo financeiro.
+        </small>
+
+        <button
+          class="primary-action"
+          onclick="abrirFormularioObjetivo()"
+        >
+          Novo objetivo
+        </button>
+
+      </div>
+
+    `;
+
+    return;
+  }
+
+
+  lista.innerHTML =
+    objetivos
+      .map(
+        objetivo => {
+
+          const meta =
+            Number(
+              objetivo.meta || 0
+            );
+
+
+          const guardado =
+            Number(
+              objetivo.guardado ||
+              objetivo.valorInicial ||
+              0
+            );
+
+
+          const falta =
+            Math.max(
+              meta -
+              guardado,
+              0
+            );
+
+
+          const percentual =
+            Math.max(
+              0,
+              Math.min(
+                100,
+                Number(
+                  objetivo.percentual ||
+                  (
+                    meta > 0
+                      ? (
+                          guardado /
+                          meta
+                        ) *
+                        100
+                      : 0
+                  )
+                )
+              )
+            );
+
+
+          const prioridade =
+            objetivo.prioridade ||
+            'Média';
+
+
+          const prazo =
+            objetivo.prazo
+              ? formatDate(
+                  objetivo.prazo
+                )
+              : 'Sem prazo';
+
+
+          const concluido =
+            percentual >= 100;
+
+
+          return `
+
+            <article
+              class="objective-card"
+            >
+
+              <div
+                class="objective-card-top"
+              >
+
+                <div
+                  class="objective-title"
+                >
+
+                  <span
+                    class="objective-icon"
+                  >
+                    🎯
+                  </span>
+
+
+                  <div>
+
+                    <strong>
+                      ${escapeHtml(
+                        objetivo.nome ||
+                        'Objetivo'
+                      )}
+                    </strong>
+
+                    <small>
+                      Prioridade:
+                      ${escapeHtml(
+                        prioridade
+                      )}
+                    </small>
+
+                  </div>
+
+                </div>
+
+
+                <b
+                  class="objective-percent"
+                >
+                  ${Math.round(
+                    percentual
+                  )}%
+                </b>
+
+              </div>
+
+
+              <div
+                class="objective-progress"
+              >
+
+                <i
+                  style="
+                    width:${percentual}%
+                  "
+                ></i>
+
+              </div>
+
+
+              <div
+                class="objective-values"
+              >
+
+                <span>
+                  ${formatMoney(
+                    guardado
+                  )}
+                </span>
+
+                <span>
+                  de
+                  ${formatMoney(
+                    meta
+                  )}
+                </span>
+
+              </div>
+
+
+              <div
+                class="objective-detail"
+              >
+
+                <span>
+                  Falta:
+                  <b>
+                    ${formatMoney(
+                      falta
+                    )}
+                  </b>
+                </span>
+
+                <span>
+                  📅 ${prazo}
+                </span>
+
+              </div>
+
+
+              <div
+                class="objective-status-row"
+              >
+
+                <span
+                  class="${
+                    concluido
+                      ? 'objective-complete'
+                      : 'objective-active'
+                  }"
+                >
+                  ${
+                    concluido
+                      ? '✓ Concluído'
+                      : '● Em andamento'
+                  }
+                </span>
+
+              </div>
+
+
+              <div
+                class="objective-actions-row"
+              >
+
+                ${
+                  !concluido
+                    ? `
+                      <button
+                        class="objective-secondary-btn"
+                        data-action="aporte"
+                        data-id="${
+                          escapeAttribute(
+                            objetivo.id
+                          )
+                        }"
+                      >
+                        💰 Adicionar dinheiro
+                      </button>
+                    `
+                    : ''
+                }
+
+
+                <button
+                  class="objective-delete-btn"
+                  data-action="excluir"
+                  data-id="${
+                    escapeAttribute(
+                      objetivo.id
+                    )
+                  }"
+                  aria-label="Excluir objetivo"
+                >
+                  🗑️
+                </button>
+
+              </div>
+
+            </article>
+
+          `;
+
+        }
+      )
+      .join('');
+
+
+  /*
+   * Botões de aporte
+   */
+  lista
+    .querySelectorAll(
+      '[data-action="aporte"]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () => {
+
+            abrirModalAporte(
+              button.dataset.id
+            );
+
+          }
+        );
+
+      }
+    );
+
+
+  /*
+   * Botões de exclusão
+   */
+  lista
+    .querySelectorAll(
+      '[data-action="excluir"]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () => {
+
+            excluirObjetivoDaPagina(
+              button.dataset.id
+            );
+
+          }
+        );
+
+      }
+    );
+
+}
+
+
+/* =====================================================
+   ADICIONAR DINHEIRO AO OBJETIVO
+   ===================================================== */
+
+function abrirModalAporte(
+  objetivoId
+) {
+
+  const objetivo =
+    state.objetivos.find(
+      item =>
+        String(item.id) ===
+        String(objetivoId)
+    );
+
+
+  if (!objetivo) {
+
+    alert(
+      'Objetivo não encontrado.'
+    );
+
+    return;
+
+  }
+
+
+  const modalExistente =
+    document.getElementById(
+      'modalAporte'
+    );
+
+
+  if (modalExistente) {
+    modalExistente.remove();
+  }
+
+
+  const modal =
+    document.createElement(
+      'div'
+    );
+
+
+  modal.id =
+    'modalAporte';
+
+  modal.className =
+    'finance-modal';
+
+
+  modal.innerHTML = `
+
+    <div
+      class="finance-modal-backdrop"
+      id="aporteBackdrop"
+    ></div>
+
+
+    <div
+      class="finance-modal-card"
+    >
+
+      <header
+        class="finance-modal-header"
+      >
+
+        <div>
+
+          <p class="eyebrow">
+            ${escapeHtml(
+              objetivo.nome
+            )}
+          </p>
+
+          <h2>
+            Adicionar dinheiro
+          </h2>
+
+        </div>
+
+
+        <button
+          class="modal-close"
+          id="fecharModalAporte"
+        >
+          ×
+        </button>
+
+      </header>
+
+
+      <form
+        id="formAporte"
+      >
+
+        <label>
+
+          Valor
+
+          <input
+            id="aporteValor"
+            type="number"
+            min="0.01"
+            step="0.01"
+            placeholder="0,00"
+            required
+            autofocus
+          >
+
+        </label>
+
+
+        <label>
+
+          Data
+
+          <input
+            id="aporteData"
+            type="date"
+            value="${
+              new Date()
+                .toISOString()
+                .split('T')[0]
+            }"
+            required
+          >
+
+        </label>
+
+
+        <label>
+
+          Observação
+
+          <textarea
+            id="aporteObservacao"
+            rows="3"
+            placeholder="Opcional"
+          ></textarea>
+
+        </label>
+
+
+        <div
+          id="aporteErro"
+          class="form-error"
+        ></div>
+
+
+        <button
+          type="submit"
+          class="primary-action"
+        >
+          Adicionar dinheiro
+        </button>
+
+      </form>
+
+    </div>
+
+  `;
+
+
+  document
+    .getElementById('app')
+    ?.appendChild(
+      modal
+    );
+
+
+  document
+    .getElementById(
+      'fecharModalAporte'
+    )
+    ?.addEventListener(
+      'click',
+      fecharModalAporte
+    );
+
+
+  document
+    .getElementById(
+      'aporteBackdrop'
+    )
+    ?.addEventListener(
+      'click',
+      fecharModalAporte
+    );
+
+
+  document
+    .getElementById(
+      'formAporte'
+    )
+    ?.addEventListener(
+      'submit',
+      event =>
+        salvarAporte(
+          event,
+          objetivoId
+        )
+    );
+
+}
+
+
+/* =====================================================
+   SALVAR APORTE
+   ===================================================== */
+
+async function salvarAporte(
+  event,
+  objetivoId
+) {
+
+  event.preventDefault();
+
+
+  const erro =
+    document.getElementById(
+      'aporteErro'
+    );
+
+
+  const botao =
+    document
+      .getElementById(
+        'formAporte'
+      )
+      ?.querySelector(
+        'button[type="submit"]'
+      );
+
+
+  try {
+
+    if (erro) {
+      erro.textContent = '';
+    }
+
+
+    if (botao) {
+
+      botao.disabled = true;
+
+      botao.textContent =
+        'Salvando...';
+
+    }
+
+
+    const valor =
+      Number(
+        document.getElementById(
+          'aporteValor'
+        ).value
+      );
+
+
+    const data =
+      document.getElementById(
+        'aporteData'
+      ).value;
+
+
+    const observacao =
+      document.getElementById(
+        'aporteObservacao'
+      ).value.trim();
+
+
+    if (
+      !valor ||
+      valor <= 0
+    ) {
+
+      throw new Error(
+        'Informe um valor maior que zero.'
+      );
+
+    }
+
+
+    await api(
+      'adicionarAporte',
+      {
+        objetivoId:
+          objetivoId,
+
+        valor:
+          valor,
+
+        data:
+          data,
+
+        observacao:
+          observacao
+      },
+      'POST'
+    );
+
+
+    fecharModalAporte();
+
+
+    /*
+     * Busca os objetivos atualizados.
+     */
+    const objetivosAtualizados =
+      await api(
+        'listarObjetivos'
+      );
+
+
+    state.objetivos =
+      Array.isArray(
+        objetivosAtualizados
+      )
+        ? objetivosAtualizados
+        : [];
+
+
+    state.dashboard =
+      null;
+
+
+    renderPaginaObjetivos();
+
+
+    await carregarDashboard();
+
+
+  } catch (error) {
+
+    console.error(
+      'Aporte:',
+      error
+    );
+
+
+    if (erro) {
+
+      erro.textContent =
+        error.message ||
+        'Erro ao adicionar dinheiro.';
+
+    }
+
+  } finally {
+
+    if (botao) {
+
+      botao.disabled = false;
+
+      botao.textContent =
+        'Adicionar dinheiro';
+
+    }
+
+  }
+
+}
+
+
+/* =====================================================
+   FECHAR MODAL DE APORTE
+   ===================================================== */
+
+function fecharModalAporte() {
+
+  document
+    .getElementById(
+      'modalAporte'
+    )
+    ?.remove();
+
+}
+
+
+/* =====================================================
+   EXCLUIR OBJETIVO
+   ===================================================== */
+
+async function excluirObjetivoDaPagina(
+  id
+) {
+
+  const objetivo =
+    state.objetivos.find(
+      item =>
+        String(item.id) ===
+        String(id)
+    );
+
+
+  const nome =
+    objetivo?.nome ||
+    'este objetivo';
+
+
+  const confirmado =
+    window.confirm(
+      `Excluir "${nome}"?\n\nEssa ação não pode ser desfeita.`
+    );
+
+
+  if (!confirmado) {
+    return;
+  }
+
+
+  try {
+
+    await api(
+      'excluirObjetivo',
+      {
+        id: id
+      },
+      'POST'
+    );
+
+
+    const objetivosAtualizados =
+      await api(
+        'listarObjetivos'
+      );
+
+
+    state.objetivos =
+      Array.isArray(
+        objetivosAtualizados
+      )
+        ? objetivosAtualizados
+        : [];
+
+
+    state.dashboard =
+      null;
+
+
+    renderPaginaObjetivos();
+
+
+    await carregarDashboard();
+
+
+  } catch (error) {
+
+    console.error(
+      'Excluir objetivo:',
+      error
+    );
+
+
+    alert(
+      error.message ||
+      'Não foi possível excluir o objetivo.'
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   CORREÇÃO DA ABERTURA DOS OBJETIVOS
+   ===================================================== */
+
+async function abrirPaginaObjetivos() {
+
+  criarPaginaObjetivos();
+
+
+  /*
+   * Garante que Lançamentos fique escondido.
+   */
+  if (lancamentosPage) {
+
+    lancamentosPage
+      .classList
+      .add(
+        'hidden'
+      );
+
+  }
+
+
+  /*
+   * Esconde a tela inicial.
+   */
+  document
+    .querySelector(
+      '.app'
+    )
+    ?.classList
+    .add(
+      'hidden'
+    );
+
+
+  /*
+   * Mostra Objetivos.
+   */
+  objetivosPage
+    .classList
+    .remove(
+      'hidden'
+    );
+
+
+  /*
+   * Navegação.
+   */
+  document
+    .querySelector(
+      '.bottom-nav'
+    )
+    ?.classList
+    .remove(
+      'lancamentos-open'
+    );
+
+
+  document
+    .querySelector(
+      '.bottom-nav'
+    )
+    ?.classList
+    .add(
+      'objetivos-open'
+    );
+
+
+  marcarNavAtiva(2);
+
+
+  /*
+   * Aqui NÃO buscamos novamente.
+   *
+   * Os objetivos já estão em state.objetivos
+   * desde o carregamento inicial.
+   */
+  renderPaginaObjetivos();
+
+}
+
+
+/* =====================================================
+   CSS DOS OBJETIVOS
+   ===================================================== */
+
+(function adicionarEstiloObjetivos() {
+
+  if (
+    document.getElementById(
+      'cssObjetivosFinal'
+    )
+  ) {
+    return;
+  }
+
+
+  const style =
+    document.createElement(
+      'style'
+    );
+
+
+  style.id =
+    'cssObjetivosFinal';
+
+
+  style.textContent = `
+
+    .objective-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+
+    .objective-card {
+      position: relative;
+      padding: 18px;
+      border-radius: 20px;
+      border: 1px solid #292e3b;
+      background: #151821;
+      box-shadow:
+        0 10px 30px rgba(0,0,0,.12);
+    }
+
+
+    .objective-card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+
+    .objective-title {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+
+    .objective-icon {
+      width: 46px;
+      height: 46px;
+      flex: 0 0 46px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      background: #211c3d;
+      font-size: 22px;
+    }
+
+
+    .objective-title strong {
+      display: block;
+      color: #fff;
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+
+
+    .objective-title small {
+      color: #9ca3b5;
+      font-size: 12px;
+    }
+
+
+    .objective-percent {
+      font-size: 18px;
+      color: #9d88ff;
+      white-space: nowrap;
+    }
+
+
+    .objective-progress {
+      width: 100%;
+      height: 10px;
+      margin: 17px 0 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #292e3b;
+    }
+
+
+    .objective-progress i {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: #8066ff;
+      transition: width .35s ease;
+    }
+
+
+    .objective-values {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+
+    .objective-values span:first-child {
+      color: #fff;
+      font-weight: 700;
+    }
+
+
+    .objective-values span:last-child {
+      color: #9ca3b5;
+    }
+
+
+    .objective-detail {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #252a35;
+      color: #9ca3b5;
+      font-size: 12px;
+    }
+
+
+    .objective-detail b {
+      color: #fff;
+    }
+
+
+    .objective-status-row {
+      margin-top: 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+
+    .objective-active {
+      color: #43d7a1;
+    }
+
+
+    .objective-complete {
+      color: #9d88ff;
+    }
+
+
+    .objective-actions-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+
+    .objective-secondary-btn {
+      flex: 1;
+      min-height: 40px;
+      border: 1px solid #343949;
+      border-radius: 12px;
+      background: #1b1f29;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+
+    .objective-secondary-btn:hover {
+      border-color: #8066ff;
+      background: #211c3d;
+    }
+
+
+    .objective-delete-btn {
+      width: 40px;
+      height: 40px;
+      flex: 0 0 40px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid #343949;
+      border-radius: 12px;
+      background: transparent;
+      color: #ff647b;
+      cursor: pointer;
+    }
+
+
+    .objective-delete-btn:hover {
+      background: rgba(255,100,123,.08);
+      border-color: #ff647b;
+    }
+
+
+    .objective-summary {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      margin-bottom: 16px;
+      padding: 16px;
+      border: 1px solid #2a2f3d;
+      border-radius: 18px;
+      background: #151821;
+    }
+
+
+    .objective-summary-icon {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 13px;
+      background: #211c3d;
+      font-size: 21px;
+    }
+
+
+    .objective-summary small {
+      display: block;
+      margin-bottom: 3px;
+      color: #9ca3b5;
+    }
+
+
+    .objective-summary strong {
+      color: #fff;
+      font-size: 17px;
+    }
+
+
+    @media (max-width: 600px) {
+
+      .objective-card {
+        padding: 15px;
+        border-radius: 18px;
+      }
+
+
+      .objective-detail {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+
+      .objective-title strong {
+        font-size: 15px;
+      }
+
+
+      .objective-percent {
+        font-size: 16px;
+      }
+
+    }
+
+  `;
+
+
+  document.head.appendChild(
+    style
+  );
+
+})();
