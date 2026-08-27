@@ -1270,3 +1270,205 @@ button {
   }
 
 }
+
+
+/* =====================================================
+   AJUSTES DE LANÇAMENTOS E OBJETIVOS
+   ===================================================== */
+
+.launch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.launch-actions .primary-action {
+  flex: 1 1 220px;
+}
+
+.secondary-action {
+  flex: 1 1 180px;
+  min-height: 44px;
+  border: 1px solid #2e3443;
+  border-radius: 14px;
+  background: #171b25;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-action:hover {
+  border-color: #8066ff;
+  background: #211c3d;
+}
+
+.launch-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.launch-info {
+  min-width: 0;
+}
+
+.launch-info strong {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.launch-info small {
+  display: block;
+  margin-top: 3px;
+}
+
+.launch-value {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.launch-actions-icons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.launch-icon-btn,
+.objective-icon-btn {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #303646;
+  border-radius: 11px;
+  background: #1b1f29;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.launch-icon-btn:hover,
+.objective-icon-btn:hover {
+  border-color: #8066ff;
+  background: #211c3d;
+}
+
+.launch-icon-btn.danger,
+.objective-icon-btn.danger {
+  color: #ff647b;
+}
+
+.launch-meta,
+.launch-recurring-tag {
+  font-size: 11px !important;
+  color: #9b90ff !important;
+}
+
+.recurrence-toggle {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px 14px;
+  border: 1px solid #2d3341;
+  border-radius: 15px;
+  background: #151a22;
+  cursor: pointer;
+}
+
+.recurrence-toggle input {
+  margin-top: 3px;
+}
+
+.recurrence-toggle strong,
+.recurrence-toggle small {
+  display: block;
+}
+
+.recurrence-toggle small {
+  margin-top: 3px;
+  color: #9ca3b5;
+  line-height: 1.4;
+}
+
+.recurrence-fields {
+  padding: 12px 0 2px;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  color: #8f96a8;
+  font-size: 11px;
+}
+
+.objective-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.objective-secondary-btn {
+  flex: 1;
+  min-height: 40px;
+  border: 1px solid #333949;
+  border-radius: 12px;
+  background: #1b1f29;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.objective-secondary-btn:hover {
+  border-color: #8066ff;
+  background: #211c3d;
+}
+
+.objective-icon-btn {
+  background: #181d27;
+}
+
+.objective-card {
+  transition: transform .18s ease, border-color .18s ease;
+}
+
+.objective-card:hover {
+  transform: translateY(-1px);
+  border-color: #3b4254;
+}
+
+@media (max-width: 600px) {
+  .launch-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .launch-value {
+    grid-column: 2 / 3;
+    text-align: left;
+    margin-top: 2px;
+  }
+
+  .launch-actions-icons {
+    grid-column: 3 / 4;
+    grid-row: 1 / span 2;
+  }
+
+  .launch-icon-btn,
+  .objective-icon-btn {
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+  }
+
+  .objective-actions-row {
+    flex-wrap: wrap;
+  }
+
+  .objective-secondary-btn {
+    min-width: 100%;
+  }
+}
