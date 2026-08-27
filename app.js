@@ -41,7 +41,17 @@ const state = {
 
   categorias: [],
 
-  recorrentes: []
+  recorrentes: [],
+
+  /*
+   * Cache mantido durante a sessão.
+   */
+  lancamentosCarregados: false,
+
+  lancamentosCarregando: null,
+
+  dashboardCarregado: false
+
 };
 
 
@@ -460,9 +470,11 @@ function renderObjetivos(
       '.goal-list'
     );
 
+
   if (!container) {
     return;
   }
+
 
   if (!objetivos.length) {
 
@@ -470,12 +482,15 @@ function renderObjetivos(
       <div class="empty-state">
         <span>🎯</span>
         <b>Nenhum objetivo ainda</b>
-        <small>Crie seu primeiro objetivo financeiro.</small>
+        <small>
+          Crie seu primeiro objetivo financeiro.
+        </small>
       </div>
     `;
 
     return;
   }
+
 
   container.innerHTML =
     objetivos
@@ -495,26 +510,49 @@ function renderObjetivos(
               )
             );
 
-          return `
-            <article class="goal">
 
-              <div class="goal-top">
+          return `
+
+            <article
+              class="goal"
+            >
+
+              <div
+                class="goal-top"
+              >
+
                 <span>
-                  🎯 ${escapeHtml(
+                  ${iconeObjetivo(
+                    objetivo.nome
+                  )}
+
+                  ${escapeHtml(
                     objetivo.nome
                   )}
                 </span>
+
 
                 <b>
                   ${Math.round(
                     percentual
                   )}%
                 </b>
+
               </div>
 
-              <div class="progress">
-                <i style="width:${percentual}%"></i>
+
+              <div
+                class="progress"
+              >
+
+                <i
+                  style="
+                    width:${percentual}%
+                  "
+                ></i>
+
               </div>
+
 
               <small>
                 ${formatMoney(
@@ -527,13 +565,14 @@ function renderObjetivos(
               </small>
 
             </article>
+
           `;
+
         }
       )
       .join('');
+
 }
-
-
 function renderUltimosLancamentos(
   lancamentos
 ) {
@@ -633,40 +672,117 @@ function renderUltimosLancamentos(
    ===================================================== */
 
 async function carregarLancamentos(
-  filtros = {}
+  filtros = {},
+  forcarAtualizacao = false
 ) {
 
-  try {
+  const possuiFiltros =
+    Object.keys(
+      filtros || {}
+    ).length > 0;
 
-    const data =
-      await api(
-        'listarLancamentos',
-        {
-          ...filtros,
-          escopo:
-            state.escopo
-        }
-      );
 
-    state.lancamentos =
-      data;
+  /*
+   * Cache:
+   * se já temos todos os lançamentos nesta sessão,
+   * não consultamos o servidor novamente.
+   */
+  if (
+    state.lancamentosCarregados &&
+    !forcarAtualizacao &&
+    !possuiFiltros
+  ) {
 
-    return data;
+    return state.lancamentos;
 
-  } catch (error) {
-
-    console.error(
-      'Lançamentos:',
-      error
-    );
-
-    mostrarErro(
-      error.message
-    );
-
-    return [];
   }
+
+
+  /*
+   * Se uma consulta já estiver em andamento,
+   * reutilizamos a mesma Promise.
+   */
+  if (
+    state.lancamentosCarregando &&
+    !forcarAtualizacao
+  ) {
+
+    return state.lancamentosCarregando;
+
+  }
+
+
+  const buscar =
+    async () => {
+
+      try {
+
+        const data =
+          await api(
+            'listarLancamentos',
+            {
+              ...filtros,
+
+              escopo:
+                state.escopo
+            }
+          );
+
+
+        const lista =
+          Array.isArray(data)
+            ? data
+            : [];
+
+
+        if (!possuiFiltros) {
+
+          state.lancamentos =
+            lista;
+
+          state.lancamentosCarregados =
+            true;
+
+        }
+
+
+        return lista;
+
+      } catch (error) {
+
+        console.error(
+          'Lançamentos:',
+          error
+        );
+
+        mostrarErro(
+          error.message
+        );
+
+        return [];
+
+      } finally {
+
+        state.lancamentosCarregando =
+          null;
+
+      }
+
+    };
+
+
+  state.lancamentosCarregando =
+    buscar();
+
+
+  return state.lancamentosCarregando;
+
 }
+
+
+/* =====================================================
+   USUÁRIO / ESCOPO
+   ===================================================== */
 
 
 /* =====================================================
@@ -774,18 +890,67 @@ async function trocarEscopo(
     return;
   }
 
+
   state.escopo =
     escopo;
 
-  await carregarDashboard();
 
-  await carregarLancamentos();
+  /*
+   * Mudou o espaço: o cache antigo não serve.
+   */
+  state.lancamentos =
+    [];
+
+  state.lancamentosCarregados =
+    false;
+
+  state.lancamentosCarregando =
+    null;
+
+
+  state.dashboard =
+    null;
+
+  state.dashboardCarregado =
+    false;
+
+
+  await Promise.all([
+    carregarDashboard(true),
+    carregarLancamentos({}, true)
+  ]);
+
+
+  if (
+    objetivosPage &&
+    !objetivosPage.classList.contains(
+      'hidden'
+    )
+  ) {
+
+    await carregarObjetivos();
+
+    renderPaginaObjetivos();
+
+  }
+
+
+  if (
+    lancamentosPage &&
+    !lancamentosPage.classList.contains(
+      'hidden'
+    )
+  ) {
+
+    preencherFiltroMeses();
+
+    atualizarCategoriasFiltro();
+
+    await atualizarListaLancamentosPage();
+
+  }
+
 }
-
-
-/* =====================================================
-   TEMA
-   ===================================================== */
 
 function configurarTema() {
 
@@ -903,34 +1068,46 @@ function inicializarGoogle() {
       'loginStatus'
     );
 
+
   const button =
     document.getElementById(
       'googleButton'
     );
 
+
   if (!button) {
+
     console.error(
       'Elemento #googleButton não foi encontrado.'
     );
+
     return;
+
   }
+
 
   if (
     !window.google?.accounts?.id
   ) {
 
     if (status) {
+
       status.textContent =
         'Carregando login do Google...';
+
     }
+
 
     setTimeout(
       inicializarGoogle,
       250
     );
 
+
     return;
+
   }
+
 
   try {
 
@@ -953,7 +1130,10 @@ function inicializarGoogle() {
 
     });
 
-    button.innerHTML = '';
+
+    button.innerHTML =
+      '';
+
 
     google.accounts.id.renderButton(
       button,
@@ -977,9 +1157,14 @@ function inicializarGoogle() {
       }
     );
 
+
     if (status) {
-      status.textContent = '';
+
+      status.textContent =
+        '';
+
     }
+
 
   } catch (error) {
 
@@ -988,11 +1173,16 @@ function inicializarGoogle() {
       error
     );
 
+
     if (status) {
+
       status.textContent =
         'Não foi possível carregar o login do Google. Tente atualizar a página.';
+
     }
+
   }
+
 }
 
 
@@ -1260,98 +1450,139 @@ function configurarEventos() {
 
   configurarTema();
 
-  const logoutButton =
-    document.getElementById('logoutBtn');
 
-  if (logoutButton) {
-    logoutButton.addEventListener(
+  document
+    .getElementById(
+      'logoutBtn'
+    )
+    ?.addEventListener(
       'click',
       logout
     );
-  }
 
-  // =========================
-  // NOVO LANÇAMENTO
-  // =========================
 
   document
     .querySelector('.fab')
     ?.addEventListener(
       'click',
-      () => abrirPaginaLancamentos(true)
+      () =>
+        abrirPaginaLancamentos(true)
     );
 
+
   document
-    .querySelector('.quick-card')
+    .getElementById(
+      'quickNovoLancamento'
+    )
     ?.addEventListener(
       'click',
-      () => abrirPaginaLancamentos(true)
+      () =>
+        abrirPaginaLancamentos(true)
     );
 
-  // =========================
-  // NAVEGAÇÃO INFERIOR
-  // =========================
-
-  const navButtons =
-    document.querySelectorAll(
-      '.bottom-nav button'
-    );
-
-  navButtons.forEach(
-    (button, index) => {
-
-      button.addEventListener(
-        'click',
-        () => {
-
-          if (index === 0) {
-            voltarInicio();
-            return;
-          }
-
-          if (index === 1) {
-            abrirPaginaLancamentos(false);
-            return;
-          }
-
-         if (index === 2) {
-  abrirPaginaObjetivos();
-  return;
-}
-
-          if (index === 3) {
-            alert(
-              'A aba Relatórios será conectada na próxima etapa.'
-            );
-            return;
-          }
-
-          if (index === 4) {
-            alert(
-              'A aba Ajustes será conectada na próxima etapa.'
-            );
-          }
-
-        }
-      );
-
-    }
-  );
-
-  // =========================
-  // SELETOR DE ESPAÇO
-  // =========================
 
   document
-    .getElementById('scopeSelect')
+    .getElementById(
+      'quickRecorrentes'
+    )
     ?.addEventListener(
-      'change',
-      event => {
-        trocarEscopo(
-          event.target.value
+      'click',
+      () =>
+        abrirPaginaLancamentos(
+          false,
+          true
+        )
+    );
+
+
+  document
+    .getElementById(
+      'verTodosObjetivosBtn'
+    )
+    ?.addEventListener(
+      'click',
+      abrirPaginaObjetivos
+    );
+
+
+  document
+    .getElementById(
+      'verTodosLancamentosBtn'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        abrirPaginaLancamentos(false)
+    );
+
+
+  /*
+   * Navegação inferior.
+   */
+  document
+    .querySelectorAll(
+      '.bottom-nav button'
+    )
+    .forEach(
+      (button, index) => {
+
+        button.addEventListener(
+          'click',
+          () => {
+
+            switch (index) {
+
+              case 0:
+                voltarInicio();
+                break;
+
+
+              case 1:
+                abrirPaginaLancamentos(
+                  false
+                );
+                break;
+
+
+              case 2:
+                abrirPaginaObjetivos();
+                break;
+
+
+              case 3:
+                alert(
+                  'A aba Relatórios será conectada na próxima etapa.'
+                );
+                break;
+
+
+              case 4:
+                alert(
+                  'A aba Ajustes será conectada na próxima etapa.'
+                );
+                break;
+
+            }
+
+          }
         );
+
       }
     );
+
+
+  document
+    .getElementById(
+      'scopeSelect'
+    )
+    ?.addEventListener(
+      'change',
+      event =>
+        trocarEscopo(
+          event.target.value
+        )
+    );
+
 }
 
 
@@ -1361,27 +1592,26 @@ function configurarEventos() {
 
 let appInicializado = false;
 
+
 function iniciarAplicacao() {
 
   if (appInicializado) {
     return;
   }
 
-  appInicializado = true;
+
+  appInicializado =
+    true;
+
 
   configurarEventos();
 
-  /*
-   * O login do Google pode terminar de carregar
-   * depois do app.js. A própria função espera até
-   * a biblioteca estar disponível.
-   */
+
   inicializarGoogle();
 
-  /*
-   * Tenta restaurar a sessão anterior.
-   */
+
   restaurarSessao();
+
 }
 
 
@@ -1401,6 +1631,7 @@ if (
 } else {
 
   iniciarAplicacao();
+
 }
 
 
@@ -1416,39 +1647,68 @@ let lancamentosPage = null;
    ===================================================== */
 
 async function abrirPaginaLancamentos(
-  abrirFormulario = false
+  abrirFormulario = false,
+  abrirRecorrente = false
 ) {
 
   criarPaginaLancamentos();
 
-  // Esconde Objetivos antes de mostrar Lançamentos.
+
   if (objetivosPage) {
-    objetivosPage.classList.add('hidden');
+
+    objetivosPage
+      .classList
+      .add('hidden');
+
   }
+
 
   document
     .querySelector('.app')
-    ?.classList.add('hidden');
+    ?.classList
+    .add('hidden');
+
+
+  lancamentosPage
+    .classList
+    .remove('hidden');
+
 
   document
     .querySelector('.bottom-nav')
-    ?.classList.remove('objetivos-open');
+    ?.classList
+    .remove('objetivos-open');
+
 
   document
     .querySelector('.bottom-nav')
-    ?.classList.add('lancamentos-open');
+    ?.classList
+    .add('lancamentos-open');
 
-  lancamentosPage.classList.remove(
-    'hidden'
-  );
 
   marcarNavAtiva(1);
 
+
+  /*
+   * Só consulta a API na primeira carga.
+   * Nas próximas trocas de aba, usa o cache.
+   */
   await atualizarListaLancamentosPage();
 
+
   if (abrirFormulario) {
+
     abrirFormularioLancamento();
+
   }
+
+
+  if (abrirRecorrente) {
+
+    abrirFormularioRecorrente();
+
+  }
+
 }
 
 
@@ -1459,31 +1719,49 @@ async function abrirPaginaLancamentos(
 function voltarInicio() {
 
   if (lancamentosPage) {
-    lancamentosPage.classList.add(
-      'hidden'
-    );
+
+    lancamentosPage
+      .classList
+      .add('hidden');
+
   }
 
+
   if (objetivosPage) {
-    objetivosPage.classList.add(
-      'hidden'
-    );
+
+    objetivosPage
+      .classList
+      .add('hidden');
+
   }
+
 
   document
     .querySelector('.app')
-    ?.classList.remove('hidden');
+    ?.classList
+    .remove('hidden');
+
 
   document
     .querySelector('.bottom-nav')
-    ?.classList.remove(
+    ?.classList
+    .remove(
       'lancamentos-open',
       'objetivos-open'
     );
 
+
   marcarNavAtiva(0);
 
-  carregarDashboard();
+
+  if (state.dashboard) {
+
+    renderDashboard(
+      state.dashboard
+    );
+
+  }
+
 }
 
 
@@ -1497,20 +1775,27 @@ function criarPaginaLancamentos() {
     return;
   }
 
+
   lancamentosPage =
-    document.createElement('div');
+    document.createElement(
+      'div'
+    );
+
 
   lancamentosPage.id =
     'lancamentosPage';
 
+
   lancamentosPage.className =
     'finance-page hidden';
+
 
   lancamentosPage.innerHTML = `
 
     <header class="finance-page-header">
 
       <div>
+
         <p class="eyebrow">
           MEU FINANCEIRO
         </p>
@@ -1522,12 +1807,15 @@ function criarPaginaLancamentos() {
         <p class="finance-page-subtitle">
           Controle suas receitas e despesas
         </p>
+
       </div>
+
 
       <button
         class="finance-back-btn"
         id="backLancamentosBtn"
         aria-label="Voltar"
+        type="button"
       >
         ←
       </button>
@@ -1538,9 +1826,7 @@ function criarPaginaLancamentos() {
     <section class="launch-summary">
 
       <div>
-        <small>
-          Receitas
-        </small>
+        <small>Receitas</small>
 
         <strong
           id="launchReceitas"
@@ -1548,12 +1834,12 @@ function criarPaginaLancamentos() {
         >
           R$ 0,00
         </strong>
+
       </div>
 
+
       <div>
-        <small>
-          Despesas
-        </small>
+        <small>Despesas</small>
 
         <strong
           id="launchDespesas"
@@ -1561,6 +1847,7 @@ function criarPaginaLancamentos() {
         >
           R$ 0,00
         </strong>
+
       </div>
 
     </section>
@@ -1571,9 +1858,19 @@ function criarPaginaLancamentos() {
       <button
         class="primary-action"
         id="novoLancamentoPageBtn"
+        type="button"
       >
         <span>＋</span>
         Novo lançamento
+      </button>
+
+
+      <button
+        class="secondary-action"
+        id="novoRecorrentePageBtn"
+        type="button"
+      >
+        🔄 Dívida recorrente
       </button>
 
     </section>
@@ -1583,13 +1880,21 @@ function criarPaginaLancamentos() {
 
       <div class="filter-row">
 
-        <select id="filtroMesLancamentos">
+        <select
+          id="filtroMesLancamentos"
+        >
+
           <option value="TODOS">
             Todos os meses
           </option>
+
         </select>
 
-        <select id="filtroTipoLancamentos">
+
+        <select
+          id="filtroTipoLancamentos"
+        >
+
           <option value="">
             Todos os tipos
           </option>
@@ -1601,6 +1906,7 @@ function criarPaginaLancamentos() {
           <option value="DESPESA">
             Despesas
           </option>
+
         </select>
 
       </div>
@@ -1608,11 +1914,16 @@ function criarPaginaLancamentos() {
 
       <div class="filter-row">
 
-        <select id="filtroCategoriaLancamentos">
+        <select
+          id="filtroCategoriaLancamentos"
+        >
+
           <option value="">
             Todas as categorias
           </option>
+
         </select>
+
 
         <input
           id="buscaLancamentos"
@@ -1638,6 +1949,7 @@ function criarPaginaLancamentos() {
 
   `;
 
+
   document
     .getElementById('app')
     ?.appendChild(
@@ -1661,7 +1973,18 @@ function criarPaginaLancamentos() {
     )
     ?.addEventListener(
       'click',
-      abrirFormularioLancamento
+      () =>
+        abrirFormularioLancamento()
+    );
+
+
+  document
+    .getElementById(
+      'novoRecorrentePageBtn'
+    )
+    ?.addEventListener(
+      'click',
+      abrirFormularioRecorrente
     );
 
 
@@ -1682,8 +2005,11 @@ function criarPaginaLancamentos() {
     ?.addEventListener(
       'change',
       () => {
+
         atualizarCategoriasFiltro();
+
         atualizarListaLancamentosPage();
+
       }
     );
 
@@ -1711,6 +2037,7 @@ function criarPaginaLancamentos() {
   preencherFiltroMeses();
 
   atualizarCategoriasFiltro();
+
 }
 
 
@@ -1725,48 +2052,68 @@ function preencherFiltroMeses() {
       'filtroMesLancamentos'
     );
 
+
   if (!select) {
     return;
   }
 
-  const meses = new Set();
 
-  state.lancamentos.forEach(
-    lancamento => {
+  const valorAtual =
+    select.value;
 
-      if (
-        lancamento.data
-      ) {
 
-        meses.add(
-          lancamento.data.substring(
-            0,
-            7
-          )
-        );
+  const meses =
+    new Set();
+
+
+  state.lancamentos
+    .forEach(
+      lancamento => {
+
+        if (
+          lancamento.data
+        ) {
+
+          meses.add(
+            String(
+              lancamento.data
+            ).substring(
+              0,
+              7
+            )
+          );
+
+        }
 
       }
-
-    }
-  );
-
-  const ordenados =
-    [...meses].sort(
-      (a, b) =>
-        b.localeCompare(a)
     );
 
+
+  const ordenados =
+    [
+      ...meses
+    ]
+      .sort(
+        (a, b) =>
+          b.localeCompare(a)
+      );
+
+
   select.innerHTML = `
+
     <option value="TODOS">
       Todos os meses
     </option>
+
   `;
+
 
   ordenados.forEach(
     mes => {
 
       const [ano, numero] =
         mes.split('-');
+
 
       const data =
         new Date(
@@ -1775,25 +2122,34 @@ function preencherFiltroMeses() {
           1
         );
 
+
       const nome =
         data.toLocaleDateString(
           'pt-BR',
           {
-            month: 'long',
-            year: 'numeric'
+            month:
+              'long',
+
+            year:
+              'numeric'
           }
         );
+
 
       const option =
         document.createElement(
           'option'
         );
 
-      option.value = mes;
+
+      option.value =
+        mes;
+
 
       option.textContent =
         nome.charAt(0).toUpperCase() +
         nome.slice(1);
+
 
       select.appendChild(
         option
@@ -1801,6 +2157,23 @@ function preencherFiltroMeses() {
 
     }
   );
+
+
+  if (
+    valorAtual &&
+    [
+      'TODOS',
+      ...ordenados
+    ].includes(
+      valorAtual
+    )
+  ) {
+
+    select.value =
+      valorAtual;
+
+  }
+
 }
 
 
@@ -1815,21 +2188,30 @@ function atualizarCategoriasFiltro() {
       'filtroCategoriaLancamentos'
     );
 
+
   if (!select) {
     return;
   }
 
+
   const tipo =
     document.getElementById(
       'filtroTipoLancamentos'
-    )?.value || '';
+    )?.value ||
+    '';
+
+
+  const valorAtual =
+    select.value;
+
 
   const categorias =
     state.categorias
       .filter(
         categoria =>
           !tipo ||
-          categoria.tipo === tipo
+          categoria.tipo ===
+          tipo
       )
       .map(
         categoria =>
@@ -1837,11 +2219,15 @@ function atualizarCategoriasFiltro() {
       )
       .sort();
 
+
   select.innerHTML = `
+
     <option value="">
       Todas as categorias
     </option>
+
   `;
+
 
   categorias.forEach(
     nome => {
@@ -1851,8 +2237,11 @@ function atualizarCategoriasFiltro() {
           'option'
         );
 
-      option.value = nome;
-      option.textContent = nome;
+      option.value =
+        nome;
+
+      option.textContent =
+        nome;
 
       select.appendChild(
         option
@@ -1860,6 +2249,19 @@ function atualizarCategoriasFiltro() {
 
     }
   );
+
+
+  if (
+    categorias.includes(
+      valorAtual
+    )
+  ) {
+
+    select.value =
+      valorAtual;
+
+  }
+
 }
 
 
@@ -1874,103 +2276,139 @@ async function atualizarListaLancamentosPage() {
       'listaLancamentosPage'
     );
 
+
   if (!lista) {
     return;
   }
 
-  lista.innerHTML = `
-    <div class="launch-loading">
-      Carregando lançamentos...
-    </div>
-  `;
+
+  /*
+   * Só mostra "Carregando..." na primeira consulta.
+   */
+  if (!state.lancamentosCarregados) {
+
+    lista.innerHTML = `
+      <div class="launch-loading">
+        Carregando lançamentos...
+      </div>
+    `;
+
+    await carregarLancamentos();
+
+  }
+
 
   const mes =
     document.getElementById(
       'filtroMesLancamentos'
-    )?.value || 'TODOS';
+    )?.value ||
+    'TODOS';
+
 
   const tipo =
     document.getElementById(
       'filtroTipoLancamentos'
-    )?.value || '';
+    )?.value ||
+    '';
+
 
   const categoria =
     document.getElementById(
       'filtroCategoriaLancamentos'
-    )?.value || '';
+    )?.value ||
+    '';
+
 
   const busca =
     (
       document.getElementById(
         'buscaLancamentos'
-      )?.value || ''
+      )?.value ||
+      ''
     )
       .trim()
       .toLowerCase();
 
 
-  const dados =
-    await carregarLancamentos();
-
-
   let filtrados =
-    dados.filter(
-      item => {
+    [
+      ...state.lancamentos
+    ];
 
-        if (
-          mes !== 'TODOS' &&
-          !item.data.startsWith(
+
+  if (
+    mes !== 'TODOS'
+  ) {
+
+    filtrados =
+      filtrados.filter(
+        item =>
+          String(
+            item.data ||
+            ''
+          ).startsWith(
             mes
           )
-        ) {
-          return false;
-        }
+      );
 
-        if (
-          tipo &&
-          item.tipo !== tipo
-        ) {
-          return false;
-        }
+  }
 
-        if (
-          categoria &&
-          item.categoria !== categoria
-        ) {
-          return false;
-        }
 
-        if (busca) {
+  if (tipo) {
+
+    filtrados =
+      filtrados.filter(
+        item =>
+          item.tipo ===
+          tipo
+      );
+
+  }
+
+
+  if (categoria) {
+
+    filtrados =
+      filtrados.filter(
+        item =>
+          item.categoria ===
+          categoria
+      );
+
+  }
+
+
+  if (busca) {
+
+    filtrados =
+      filtrados.filter(
+        item => {
 
           const texto =
-            (
-              item.descricao +
-              ' ' +
-              item.categoria +
-              ' ' +
-              (item.conta || '')
-            )
+            [
+              item.descricao,
+              item.categoria,
+              item.conta
+            ]
+              .filter(Boolean)
+              .join(' ')
               .toLowerCase();
 
-          if (
-            !texto.includes(
-              busca
-            )
-          ) {
-            return false;
-          }
+
+          return texto.includes(
+            busca
+          );
 
         }
+      );
 
-        return true;
-
-      }
-    );
+  }
 
 
   renderPaginaLancamentos(
     filtrados
   );
+
 }
 
 
@@ -1986,6 +2424,7 @@ function renderPaginaLancamentos(
     document.getElementById(
       'listaLancamentosPage'
     );
+
 
   if (!lista) {
     return;
@@ -2031,30 +2470,39 @@ function renderPaginaLancamentos(
       'launchReceitas'
     );
 
+
   const despesasEl =
     document.getElementById(
       'launchDespesas'
     );
 
+
   if (receitasEl) {
+
     receitasEl.textContent =
       formatMoney(
         receitas
       );
+
   }
 
+
   if (despesasEl) {
+
     despesasEl.textContent =
       formatMoney(
         despesas
       );
+
   }
 
 
   if (!lancamentos.length) {
 
     lista.innerHTML = `
+
       <div class="launch-empty">
+
         <span>💸</span>
 
         <strong>
@@ -2068,10 +2516,13 @@ function renderPaginaLancamentos(
         <button
           class="primary-action"
           onclick="abrirFormularioLancamento()"
+          type="button"
         >
           Novo lançamento
         </button>
+
       </div>
+
     `;
 
     return;
@@ -2086,6 +2537,27 @@ function renderPaginaLancamentos(
           const despesa =
             item.tipo ===
             'DESPESA';
+
+
+          const parcelas =
+            Number(
+              item.parcelas ||
+              1
+            );
+
+
+          const parcelaAtual =
+            Number(
+              item.parcelaAtual ||
+              1
+            );
+
+
+          const parcelamento =
+            parcelas > 1
+              ? `Parcela ${parcelaAtual}/${parcelas}`
+              : '';
+
 
           return `
 
@@ -2108,19 +2580,26 @@ function renderPaginaLancamentos(
 
                 <strong>
                   ${escapeHtml(
-                    item.descricao
+                    item.descricao ||
+                    'Sem descrição'
                   )}
                 </strong>
+
 
                 <small>
                   ${formatDate(
                     item.data
                   )}
-                  ·
-                  ${escapeHtml(
-                    item.categoria ||
-                    'Outros'
-                  )}
+
+                  ${
+                    item.categoria
+                      ? ' · ' +
+                        escapeHtml(
+                          item.categoria
+                        )
+                      : ''
+                  }
+
                   ${
                     item.conta
                       ? ' · ' +
@@ -2131,14 +2610,27 @@ function renderPaginaLancamentos(
                   }
                 </small>
 
+
                 ${
-                  item.parcelas > 1
+                  parcelamento
                     ? `
-                      <small>
-                        Parcela
-                        ${item.parcelaAtual}
-                        /
-                        ${item.parcelas}
+                      <small
+                        class="launch-meta"
+                      >
+                        ${parcelamento}
+                      </small>
+                    `
+                    : ''
+                }
+
+
+                ${
+                  item.recorrenteId
+                    ? `
+                      <small
+                        class="launch-recurring-tag"
+                      >
+                        🔄 Recorrente
                       </small>
                     `
                     : ''
@@ -2167,13 +2659,39 @@ function renderPaginaLancamentos(
                   )}
                 </strong>
 
+              </div>
+
+
+              <div
+                class="launch-actions-icons"
+              >
+
                 <button
-                  class="delete-launch-btn"
+                  type="button"
+                  class="launch-icon-btn"
+                  data-action="edit"
                   data-id="${
                     escapeAttribute(
                       item.id
                     )
                   }"
+                  title="Editar lançamento"
+                  aria-label="Editar lançamento"
+                >
+                  ✏️
+                </button>
+
+
+                <button
+                  type="button"
+                  class="launch-icon-btn danger"
+                  data-action="delete"
+                  data-id="${
+                    escapeAttribute(
+                      item.id
+                    )
+                  }"
+                  title="Excluir lançamento"
                   aria-label="Excluir lançamento"
                 >
                   🗑️
@@ -2192,41 +2710,71 @@ function renderPaginaLancamentos(
 
   lista
     .querySelectorAll(
-      '.delete-launch-btn'
+      '[data-action="edit"]'
     )
     .forEach(
       button => {
 
         button.addEventListener(
           'click',
-          () => {
-
-            excluirLancamentoDaPagina(
+          () =>
+            abrirFormularioLancamento(
               button.dataset.id
-            );
-
-          }
+            )
         );
 
       }
     );
+
+
+  lista
+    .querySelectorAll(
+      '[data-action="delete"]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () =>
+            excluirLancamentoDaPagina(
+              button.dataset.id
+            )
+        );
+
+      }
+    );
+
 }
 
 
 /* =====================================================
-   NOVO LANÇAMENTO
+   FORMULÁRIO DE LANÇAMENTO
    ===================================================== */
 
-function abrirFormularioLancamento() {
+function abrirFormularioLancamento(
+  id = null
+) {
 
   const modal =
     document.getElementById(
       'modalLancamento'
     );
 
+
   if (!modal) {
     return;
   }
+
+
+  const existente =
+    id
+      ? state.lancamentos.find(
+          item =>
+            String(item.id) ===
+            String(id)
+        )
+      : null;
 
 
   const hoje =
@@ -2235,11 +2783,23 @@ function abrirFormularioLancamento() {
       .split('T')[0];
 
 
+  const dataInicial =
+    existente?.data ||
+    hoje;
+
+
+  const isEdicao =
+    Boolean(
+      existente
+    );
+
+
   modal.innerHTML = `
 
     <div
       class="finance-modal-backdrop"
     ></div>
+
 
     <div
       class="finance-modal-card"
@@ -2250,18 +2810,31 @@ function abrirFormularioLancamento() {
       >
 
         <div>
+
           <p class="eyebrow">
-            NOVO LANÇAMENTO
+            ${
+              isEdicao
+                ? 'EDITAR LANÇAMENTO'
+                : 'NOVO LANÇAMENTO'
+            }
           </p>
 
+
           <h2>
-            Registrar movimento
+            ${
+              isEdicao
+                ? 'Editar movimento'
+                : 'Registrar movimento'
+            }
           </h2>
+
         </div>
+
 
         <button
           id="fecharModalLancamento"
           class="modal-close"
+          type="button"
         >
           ×
         </button>
@@ -2280,15 +2853,29 @@ function abrirFormularioLancamento() {
           <button
             type="button"
             data-tipo="DESPESA"
-            class="type-btn active"
+            class="type-btn ${
+              (
+                existente?.tipo ||
+                'DESPESA'
+              ) ===
+              'DESPESA'
+                ? 'active'
+                : ''
+            }"
           >
             − Despesa
           </button>
 
+
           <button
             type="button"
             data-tipo="RECEITA"
-            class="type-btn"
+            class="type-btn ${
+              existente?.tipo ===
+              'RECEITA'
+                ? 'active'
+                : ''
+            }"
           >
             + Receita
           </button>
@@ -2299,7 +2886,10 @@ function abrirFormularioLancamento() {
         <input
           type="hidden"
           id="lancamentoTipo"
-          value="DESPESA"
+          value="${
+            existente?.tipo ||
+            'DESPESA'
+          }"
         >
 
 
@@ -2309,7 +2899,13 @@ function abrirFormularioLancamento() {
           <input
             id="lancamentoDescricao"
             type="text"
-            placeholder="Ex.: Mercado"
+            placeholder="Ex.: Faculdade"
+            value="${
+              escapeAttribute(
+                existente?.descricao ||
+                ''
+              )
+            }"
             required
           >
 
@@ -2329,9 +2925,12 @@ function abrirFormularioLancamento() {
               min="0.01"
               step="0.01"
               placeholder="0,00"
+              value="${
+                existente?.valor ??
+                ''
+              }"
               required
             >
-
           </label>
 
 
@@ -2341,10 +2940,9 @@ function abrirFormularioLancamento() {
             <input
               id="lancamentoData"
               type="date"
-              value="${hoje}"
+              value="${dataInicial}"
               required
             >
-
           </label>
 
         </div>
@@ -2371,9 +2969,11 @@ function abrirFormularioLancamento() {
             <select
               id="lancamentoConta"
             >
+
               <option value="">
                 Sem conta
               </option>
+
             </select>
 
           </label>
@@ -2422,29 +3022,139 @@ function abrirFormularioLancamento() {
 
 
           <label>
-            Parcelas
+
+            Parcelamento
 
             <input
               id="lancamentoParcelas"
               type="number"
               min="1"
               max="60"
-              value="1"
+              value="${
+                existente?.parcelas ||
+                1
+              }"
             >
+
+
+            <small class="field-hint">
+              Compra parcelada em várias vezes.
+            </small>
 
           </label>
 
         </div>
 
 
+        ${
+          !isEdicao
+            ? `
+
+              <label
+                class="recurrence-toggle"
+              >
+
+                <input
+                  id="lancamentoRecorrente"
+                  type="checkbox"
+                >
+
+
+                <span>
+
+                  <strong>
+                    🔄 É uma dívida recorrente mensal?
+                  </strong>
+
+
+                  <small>
+                    Ex.: faculdade, aluguel,
+                    internet ou assinatura.
+                  </small>
+
+                </span>
+
+              </label>
+
+
+              <div
+                id="recurrenceFields"
+                class="recurrence-fields hidden"
+              >
+
+                <div
+                  class="form-grid"
+                >
+
+                  <label>
+
+                    Vencimento
+
+                    <input
+                      id="recorrenciaDia"
+                      type="number"
+                      min="1"
+                      max="31"
+                      value="${
+                        Number(
+                          String(
+                            dataInicial
+                          ).slice(
+                            8,
+                            10
+                          )
+                        ) ||
+                        1
+                      }"
+                    >
+
+
+                    <small class="field-hint">
+                      Dia de cada mês.
+                    </small>
+
+                  </label>
+
+
+                  <label>
+
+                    Repetir até
+
+                    <input
+                      id="recorrenciaFim"
+                      type="date"
+                    >
+
+
+                    <small class="field-hint">
+                      Deixe vazio para manter ativa.
+                    </small>
+
+                  </label>
+
+                </div>
+
+              </div>
+
+            `
+            : ''
+        }
+
+
         <label>
+
           Observação
 
           <textarea
             id="lancamentoObservacao"
             rows="3"
             placeholder="Opcional"
-          ></textarea>
+          >${
+            escapeHtml(
+              existente?.observacao ||
+              ''
+            )
+          }</textarea>
 
         </label>
 
@@ -2459,7 +3169,11 @@ function abrirFormularioLancamento() {
           type="submit"
           class="primary-action save-launch-btn"
         >
-          Salvar lançamento
+          ${
+            isEdicao
+              ? 'Salvar alterações'
+              : 'Salvar lançamento'
+          }
         </button>
 
       </form>
@@ -2468,17 +3182,20 @@ function abrirFormularioLancamento() {
 
   `;
 
+
   modal.classList.remove(
     'hidden'
   );
 
 
-  preencherFormularioLancamento();
+  preencherFormularioLancamento(
+    existente
+  );
 
 
-  document
-    .getElementById(
-      'fecharModalLancamento'
+  modal
+    .querySelector(
+      '#fecharModalLancamento'
     )
     ?.addEventListener(
       'click',
@@ -2512,15 +3229,17 @@ function abrirFormularioLancamento() {
                 '.type-btn'
               )
               .forEach(
-                b =>
-                  b.classList.remove(
+                item =>
+                  item.classList.remove(
                     'active'
                   )
               );
 
+
             button.classList.add(
               'active'
             );
+
 
             document
               .getElementById(
@@ -2528,6 +3247,7 @@ function abrirFormularioLancamento() {
               )
               .value =
               button.dataset.tipo;
+
 
             preencherCategoriasFormulario();
 
@@ -2540,12 +3260,120 @@ function abrirFormularioLancamento() {
 
   document
     .getElementById(
-      'formLancamento'
+      'lancamentoRecorrente'
+    )
+    ?.addEventListener(
+      'change',
+      event => {
+
+        document
+          .getElementById(
+            'recurrenceFields'
+          )
+          ?.classList.toggle(
+            'hidden',
+            !event.target.checked
+          );
+
+      }
+    );
+
+
+  modal
+    .querySelector(
+      '#formLancamento'
     )
     ?.addEventListener(
       'submit',
-      salvarLancamentoFormulario
+      event =>
+        salvarLancamentoFormulario(
+          event,
+          id
+        )
     );
+
+}
+
+
+/* =====================================================
+   PREENCHER FORMULÁRIO
+   ===================================================== */
+
+function preencherFormularioLancamento(
+  existente = null
+) {
+
+  preencherCategoriasFormulario(
+    existente?.categoria ||
+    ''
+  );
+
+
+  const contaSelect =
+    document.getElementById(
+      'lancamentoConta'
+    );
+
+
+  if (
+    contaSelect
+  ) {
+
+    state.contas
+      .forEach(
+        conta => {
+
+          const option =
+            document.createElement(
+              'option'
+            );
+
+
+          option.value =
+            conta.nome;
+
+
+          option.textContent =
+            conta.banco
+              ? `${conta.nome} · ${conta.banco}`
+              : conta.nome;
+
+
+          if (
+            existente?.conta ===
+            conta.nome
+          ) {
+
+            option.selected =
+              true;
+
+          }
+
+
+          contaSelect.appendChild(
+            option
+          );
+
+        }
+      );
+
+  }
+
+
+  const forma =
+    document.getElementById(
+      'lancamentoForma'
+    );
+
+
+  if (forma && existente) {
+
+    forma.value =
+      existente.formaPagamento ||
+      '';
+
+  }
+
 }
 
 
@@ -2553,18 +3381,840 @@ function abrirFormularioLancamento() {
    CATEGORIAS DO FORMULÁRIO
    ===================================================== */
 
-function preencherFormularioLancamento() {
+function preencherCategoriasFormulario(
+  categoriaSelecionada = ''
+) {
 
-  preencherCategoriasFormulario();
+  const select =
+    document.getElementById(
+      'lancamentoCategoria'
+    );
+
+
+  if (!select) {
+    return;
+  }
+
+
+  const tipo =
+    document.getElementById(
+      'lancamentoTipo'
+    )?.value ||
+    'DESPESA';
+
+
+  const categorias =
+    state.categorias
+      .filter(
+        categoria =>
+          categoria.tipo ===
+          tipo
+      );
+
+
+  select.innerHTML =
+    '';
+
+
+  categorias
+    .forEach(
+      categoria => {
+
+        const option =
+          document.createElement(
+            'option'
+          );
+
+
+        option.value =
+          categoria.nome;
+
+
+        option.textContent =
+          categoria.nome;
+
+
+        if (
+          categoria.nome ===
+          categoriaSelecionada
+        ) {
+
+          option.selected =
+            true;
+
+        }
+
+
+        select.appendChild(
+          option
+        );
+
+      }
+    );
+
+}
+
+
+/* =====================================================
+   SALVAR LANÇAMENTO
+   ===================================================== */
+
+async function salvarLancamentoFormulario(
+  event,
+  id = null
+) {
+
+  event.preventDefault();
+
+
+  const erro =
+    document.getElementById(
+      'lancamentoFormErro'
+    );
+
+
+  const button =
+    document.querySelector(
+      '.save-launch-btn'
+    );
+
+
+  try {
+
+    if (erro) {
+      erro.textContent = '';
+    }
+
+
+    if (button) {
+
+      button.disabled =
+        true;
+
+
+      button.textContent =
+        id
+          ? 'Salvando alterações...'
+          : 'Salvando...';
+
+    }
+
+
+    const dados = {
+
+      id:
+        id || undefined,
+
+      escopo:
+        state.escopo,
+
+      tipo:
+        document
+          .getElementById(
+            'lancamentoTipo'
+          )
+          .value,
+
+      descricao:
+        document
+          .getElementById(
+            'lancamentoDescricao'
+          )
+          .value
+          .trim(),
+
+      valor:
+        Number(
+          document
+            .getElementById(
+              'lancamentoValor'
+            )
+            .value
+        ),
+
+      data:
+        document
+          .getElementById(
+            'lancamentoData'
+          )
+          .value,
+
+      categoria:
+        document
+          .getElementById(
+            'lancamentoCategoria'
+          )
+          .value,
+
+      conta:
+        document
+          .getElementById(
+            'lancamentoConta'
+          )
+          .value,
+
+      formaPagamento:
+        document
+          .getElementById(
+            'lancamentoForma'
+          )
+          .value,
+
+      parcelas:
+        Number(
+          document
+            .getElementById(
+              'lancamentoParcelas'
+            )
+            .value ||
+          1
+        ),
+
+      observacao:
+        document
+          .getElementById(
+            'lancamentoObservacao'
+          )
+          .value
+          .trim()
+
+    };
+
+
+    if (!dados.descricao) {
+
+      throw new Error(
+        'Informe uma descrição.'
+      );
+
+    }
+
+
+    if (
+      !dados.valor ||
+      dados.valor <= 0
+    ) {
+
+      throw new Error(
+        'Informe um valor válido.'
+      );
+
+    }
+
+
+    const recorrente =
+      !id &&
+      Boolean(
+        document
+          .getElementById(
+            'lancamentoRecorrente'
+          )
+          ?.checked
+      );
+
+
+    if (recorrente) {
+
+      if (
+        dados.tipo !==
+        'DESPESA'
+      ) {
+
+        throw new Error(
+          'Dívidas recorrentes devem ser despesas.'
+        );
+
+      }
+
+
+      if (
+        dados.parcelas >
+        1
+      ) {
+
+        throw new Error(
+          'Para uma dívida recorrente, deixe o parcelamento em 1.'
+        );
+
+      }
+
+
+      const dia =
+        Math.max(
+          1,
+          Math.min(
+            31,
+            Number(
+              document
+                .getElementById(
+                  'recorrenciaDia'
+                )
+                .value ||
+              1
+            )
+          )
+        );
+
+
+      const dataFim =
+        document
+          .getElementById(
+            'recorrenciaFim'
+          )
+          ?.value ||
+        '';
+
+
+      await api(
+        'salvarRecorrente',
+        {
+
+          escopo:
+            state.escopo,
+
+          descricao:
+            dados.descricao,
+
+          tipo:
+            dados.tipo,
+
+          categoria:
+            dados.categoria,
+
+          valor:
+            dados.valor,
+
+          dia:
+            dia,
+
+          conta:
+            dados.conta,
+
+          formaPagamento:
+            dados.formaPagamento,
+
+          cartao:
+            '',
+
+          parcelas:
+            1,
+
+          dataInicio:
+            dados.data,
+
+          dataFim:
+            dataFim,
+
+          ativo:
+            true,
+
+          observacao:
+            dados.observacao
+
+        },
+        'POST'
+      );
+
+
+      const agora =
+        new Date();
+
+
+      await api(
+        'gerarRecorrentesDoMes',
+        {
+
+          ano:
+            agora.getFullYear(),
+
+          mes:
+            agora.getMonth() + 1,
+
+          escopo:
+            state.escopo
+
+        },
+        'POST'
+      );
+
+
+    } else {
+
+      const action =
+        !id &&
+        dados.parcelas >
+        1
+          ? 'salvarParcelamento'
+          : 'salvarLancamento';
+
+
+      await api(
+        action,
+        dados,
+        'POST'
+      );
+
+    }
+
+
+    fecharModalLancamento();
+
+
+    /*
+     * Houve alteração.
+     * Invalidamos e reconstruímos o cache.
+     */
+    state.lancamentos =
+      [];
+
+    state.lancamentosCarregados =
+      false;
+
+    state.lancamentosCarregando =
+      null;
+
+
+    await carregarLancamentos(
+      {},
+      true
+    );
+
+
+    preencherFiltroMeses();
+
+    atualizarCategoriasFiltro();
+
+
+    await atualizarListaLancamentosPage();
+
+
+    state.dashboard =
+      null;
+
+    state.dashboardCarregado =
+      false;
+
+
+    await carregarDashboard(
+      true
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      'Salvar lançamento:',
+      error
+    );
+
+
+    if (erro) {
+
+      erro.textContent =
+        error.message ||
+        'Não foi possível salvar o lançamento.';
+
+    }
+
+  } finally {
+
+    if (button) {
+
+      button.disabled =
+        false;
+
+
+      button.textContent =
+        id
+          ? 'Salvar alterações'
+          : 'Salvar lançamento';
+
+    }
+
+  }
+
+}
+
+
+/* =====================================================
+   EXCLUIR LANÇAMENTO
+   ===================================================== */
+
+async function excluirLancamentoDaPagina(
+  id
+) {
+
+  const confirmado =
+    window.confirm(
+      'Excluir este lançamento?'
+    );
+
+
+  if (!confirmado) {
+    return;
+  }
+
+
+  try {
+
+    await api(
+      'excluirLancamento',
+      {
+        id:
+          id
+      },
+      'POST'
+    );
+
+
+    state.lancamentos =
+      [];
+
+    state.lancamentosCarregados =
+      false;
+
+    state.lancamentosCarregando =
+      null;
+
+
+    await carregarLancamentos(
+      {},
+      true
+    );
+
+
+    preencherFiltroMeses();
+
+    atualizarCategoriasFiltro();
+
+
+    await atualizarListaLancamentosPage();
+
+
+    state.dashboard =
+      null;
+
+    state.dashboardCarregado =
+      false;
+
+
+    await carregarDashboard(
+      true
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      'Excluir lançamento:',
+      error
+    );
+
+
+    alert(
+      error.message ||
+      'Não foi possível excluir o lançamento.'
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   FECHAR MODAL
+   ===================================================== */
+
+function fecharModalLancamento() {
+
+  document
+    .getElementById(
+      'modalLancamento'
+    )
+    ?.classList
+    .add('hidden');
+
+}
+
+
+/* =====================================================
+   DÍVIDA RECORRENTE
+   ===================================================== */
+
+function abrirFormularioRecorrente() {
+
+  const existente =
+    document.getElementById(
+      'modalRecorrente'
+    );
+
+
+  if (existente) {
+    existente.remove();
+  }
+
+
+  const hoje =
+    new Date()
+      .toISOString()
+      .split('T')[0];
+
+
+  const modal =
+    document.createElement(
+      'div'
+    );
+
+
+  modal.id =
+    'modalRecorrente';
+
+
+  modal.className =
+    'finance-modal';
+
+
+  modal.innerHTML = `
+
+    <div
+      class="finance-modal-backdrop"
+      id="recorrenteBackdrop"
+    ></div>
+
+
+    <div
+      class="finance-modal-card"
+    >
+
+      <header
+        class="finance-modal-header"
+      >
+
+        <div>
+
+          <p class="eyebrow">
+            DÍVIDA RECORRENTE
+          </p>
+
+          <h2>
+            Cadastrar conta mensal
+          </h2>
+
+        </div>
+
+
+        <button
+          class="modal-close"
+          id="fecharModalRecorrente"
+          type="button"
+        >
+          ×
+        </button>
+
+      </header>
+
+
+      <form
+        id="formRecorrente"
+      >
+
+        <label>
+          Descrição
+
+          <input
+            id="recDescricao"
+            type="text"
+            placeholder="Ex.: Faculdade"
+            required
+          >
+        </label>
+
+
+        <div
+          class="form-grid"
+        >
+
+          <label>
+            Valor mensal
+
+            <input
+              id="recValor"
+              type="number"
+              min="0.01"
+              step="0.01"
+              placeholder="0,00"
+              required
+            >
+          </label>
+
+
+          <label>
+            Vencimento
+
+            <input
+              id="recDia"
+              type="number"
+              min="1"
+              max="31"
+              value="10"
+              required
+            >
+
+            <small class="field-hint">
+              Dia de cada mês.
+            </small>
+
+          </label>
+
+        </div>
+
+
+        <div
+          class="form-grid"
+        >
+
+          <label>
+            Data de início
+
+            <input
+              id="recInicio"
+              type="date"
+              value="${hoje}"
+              required
+            >
+          </label>
+
+
+          <label>
+            Repetir até
+
+            <input
+              id="recFim"
+              type="date"
+            >
+
+            <small class="field-hint">
+              Deixe vazio para manter ativa.
+            </small>
+
+          </label>
+
+        </div>
+
+
+        <div
+          class="form-grid"
+        >
+
+          <label>
+            Categoria
+
+            <select
+              id="recCategoria"
+              required
+            ></select>
+
+          </label>
+
+
+          <label>
+            Conta
+
+            <select
+              id="recConta"
+            >
+
+              <option value="">
+                Sem conta
+              </option>
+
+            </select>
+
+          </label>
+
+        </div>
+
+
+        <label>
+          Observação
+
+          <textarea
+            id="recObservacao"
+            rows="3"
+            placeholder="Opcional"
+          ></textarea>
+        </label>
+
+
+        <div
+          id="recFormErro"
+          class="form-error"
+        ></div>
+
+
+        <button
+          type="submit"
+          class="primary-action"
+        >
+          Salvar dívida recorrente
+        </button>
+
+      </form>
+
+    </div>
+
+  `;
+
+
+  document
+    .getElementById(
+      'app'
+    )
+    ?.appendChild(
+      modal
+    );
+
+
+  const catSelect =
+    document.getElementById(
+      'recCategoria'
+    );
+
+
+  state.categorias
+    .filter(
+      categoria =>
+        categoria.tipo ===
+        'DESPESA'
+    )
+    .forEach(
+      categoria => {
+
+        const option =
+          document.createElement(
+            'option'
+          );
+
+        option.value =
+          categoria.nome;
+
+        option.textContent =
+          categoria.nome;
+
+        catSelect
+          ?.appendChild(
+            option
+          );
+
+      }
+    );
+
 
   const contaSelect =
     document.getElementById(
-      'lancamentoConta'
+      'recConta'
     );
 
-  if (!contaSelect) {
-    return;
-  }
 
   state.contas
     .forEach(
@@ -2583,85 +4233,75 @@ function preencherFormularioLancamento() {
             ? `${conta.nome} · ${conta.banco}`
             : conta.nome;
 
-        contaSelect.appendChild(
-          option
-        );
+        contaSelect
+          ?.appendChild(
+            option
+          );
 
       }
     );
-}
 
 
-function preencherCategoriasFormulario() {
-
-  const select =
-    document.getElementById(
-      'lancamentoCategoria'
+  document
+    .getElementById(
+      'fecharModalRecorrente'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        modal.remove()
     );
 
-  if (!select) {
-    return;
-  }
 
-  const tipo =
-    document.getElementById(
-      'lancamentoTipo'
-    )?.value ||
-    'DESPESA';
+  document
+    .getElementById(
+      'recorrenteBackdrop'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        modal.remove()
+    );
 
-  const categorias =
-    state.categorias
-      .filter(
-        categoria =>
-          categoria.tipo ===
-          tipo
-      );
 
-  select.innerHTML = '';
-
-  categorias.forEach(
-    categoria => {
-
-      const option =
-        document.createElement(
-          'option'
-        );
-
-      option.value =
-        categoria.nome;
-
-      option.textContent =
-        categoria.nome;
-
-      select.appendChild(
-        option
-      );
-
-    }
-  );
+  document
+    .getElementById(
+      'formRecorrente'
+    )
+    ?.addEventListener(
+      'submit',
+      salvarRecorrenteFormulario
+    );
 
 }
 
 
 /* =====================================================
-   SALVAR
+   SALVAR RECORRENTE
    ===================================================== */
 
-async function salvarLancamentoFormulario(
+async function salvarRecorrenteFormulario(
   event
 ) {
 
   event.preventDefault();
 
+
   const erro =
     document.getElementById(
-      'lancamentoFormErro'
+      'recFormErro'
     );
 
+
   const button =
-    document.querySelector(
-      '.save-launch-btn'
-    );
+    document
+      .getElementById(
+        'formRecorrente'
+      )
+      ?.querySelector(
+        'button[type="submit"]'
+      );
+
 
   try {
 
@@ -2669,230 +4309,252 @@ async function salvarLancamentoFormulario(
       erro.textContent = '';
     }
 
+
     if (button) {
-      button.disabled = true;
+
+      button.disabled =
+        true;
+
       button.textContent =
         'Salvando...';
+
     }
 
 
-    const tipo =
+    const dataInicio =
       document.getElementById(
-        'lancamentoTipo'
+        'recInicio'
       ).value;
+
+
+    const dataFim =
+      document.getElementById(
+        'recFim'
+      ).value;
+
+
+    const dia =
+      Number(
+        document.getElementById(
+          'recDia'
+        ).value
+      );
+
+
+    if (
+      dia < 1 ||
+      dia > 31
+    ) {
+
+      throw new Error(
+        'Informe um vencimento entre 1 e 31.'
+      );
+
+    }
+
+
+    if (
+      dataFim &&
+      dataInicio &&
+      dataFim < dataInicio
+    ) {
+
+      throw new Error(
+        'A data final precisa ser posterior ao início.'
+      );
+
+    }
+
 
     const dados = {
 
       escopo:
         state.escopo,
 
-      tipo:
-
-        tipo,
-
       descricao:
         document.getElementById(
-          'lancamentoDescricao'
+          'recDescricao'
         ).value.trim(),
+
+      tipo:
+        'DESPESA',
+
+      categoria:
+        document.getElementById(
+          'recCategoria'
+        ).value,
 
       valor:
         Number(
           document.getElementById(
-            'lancamentoValor'
+            'recValor'
           ).value
         ),
 
-      data:
-        document.getElementById(
-          'lancamentoData'
-        ).value,
-
-      categoria:
-        document.getElementById(
-          'lancamentoCategoria'
-        ).value,
+      dia:
+        dia,
 
       conta:
         document.getElementById(
-          'lancamentoConta'
+          'recConta'
         ).value,
 
       formaPagamento:
-        document.getElementById(
-          'lancamentoForma'
-        ).value,
+        '',
+
+      cartao:
+        '',
 
       parcelas:
-        Number(
-          document.getElementById(
-            'lancamentoParcelas'
-          ).value || 1
-        ),
+        1,
+
+      dataInicio:
+        dataInicio,
+
+      dataFim:
+        dataFim,
+
+      ativo:
+        true,
 
       observacao:
         document.getElementById(
-          'lancamentoObservacao'
+          'recObservacao'
         ).value.trim()
 
     };
 
 
-    if (
-      !dados.descricao
-    ) {
+    if (!dados.descricao) {
+
       throw new Error(
-        'Informe uma descrição.'
+        'Informe a descrição.'
       );
+
     }
+
 
     if (
       !dados.valor ||
       dados.valor <= 0
     ) {
+
       throw new Error(
-        'Informe um valor válido.'
+        'Informe um valor mensal válido.'
       );
+
     }
 
 
-    const action =
-      dados.parcelas > 1
-        ? 'salvarParcelamento'
-        : 'salvarLancamento';
-
-
     await api(
-      action,
+      'salvarRecorrente',
       dados,
       'POST'
     );
 
 
-    fecharModalLancamento();
+    /*
+     * Gera a ocorrência deste mês, se aplicável.
+     * O backend evita duplicação.
+     */
+    const agora =
+      new Date();
 
 
-    await carregarLancamentos();
+    await api(
+      'gerarRecorrentesDoMes',
+      {
+
+        ano:
+          agora.getFullYear(),
+
+        mes:
+          agora.getMonth() + 1,
+
+        escopo:
+          state.escopo
+
+      },
+      'POST'
+    );
+
+
+    modal.remove();
+
+
+    state.recorrentes =
+      await api(
+        'listarRecorrentes'
+      );
+
+
+    state.lancamentos =
+      [];
+
+    state.lancamentosCarregados =
+      false;
+
+    state.lancamentosCarregando =
+      null;
+
+
+    await carregarLancamentos(
+      {},
+      true
+    );
+
 
     preencherFiltroMeses();
 
+    atualizarCategoriasFiltro();
+
     await atualizarListaLancamentosPage();
 
-    await carregarDashboard();
+
+    state.dashboard =
+      null;
+
+    state.dashboardCarregado =
+      false;
+
+
+    await carregarDashboard(
+      true
+    );
+
 
   } catch (error) {
 
     console.error(
+      'Salvar recorrente:',
       error
     );
 
+
     if (erro) {
+
       erro.textContent =
-        error.message;
+        error.message ||
+        'Não foi possível salvar a dívida recorrente.';
+
     }
 
   } finally {
 
     if (button) {
-      button.disabled = false;
+
+      button.disabled =
+        false;
+
       button.textContent =
-        'Salvar lançamento';
+        'Salvar dívida recorrente';
+
     }
 
   }
-}
-
-
-/* =====================================================
-   EXCLUIR
-   ===================================================== */
-
-async function excluirLancamentoDaPagina(
-  id
-) {
-
-  const confirmado =
-    window.confirm(
-      'Excluir este lançamento?'
-    );
-
-  if (!confirmado) {
-    return;
-  }
-
-  try {
-
-    await api(
-      'excluirLancamento',
-      {
-        id: id
-      },
-      'POST'
-    );
-
-    await carregarLancamentos();
-
-    preencherFiltroMeses();
-
-    await atualizarListaLancamentosPage();
-
-    await carregarDashboard();
-
-  } catch (error) {
-
-    console.error(
-      error
-    );
-
-    alert(
-      error.message
-    );
-
-  }
-}
-
-
-/* =====================================================
-   FECHAR MODAL
-   ===================================================== */
-
-function fecharModalLancamento() {
-
-  document
-    .getElementById(
-      'modalLancamento'
-    )
-    ?.classList.add(
-      'hidden'
-    );
 
 }
 
-
-/* =====================================================
-   NAV ATIVA
-   ===================================================== */
-
-function marcarNavAtiva(
-  index
-) {
-
-  const buttons =
-    document.querySelectorAll(
-      '.bottom-nav button'
-    );
-
-  buttons.forEach(
-    button =>
-      button.classList.remove(
-        'active'
-      )
-  );
-
-  buttons[index]
-    ?.classList.add(
-      'active'
-    );
-}
 
 /* =====================================================
    PÁGINA DE OBJETIVOS
@@ -2909,28 +4571,48 @@ async function abrirPaginaObjetivos() {
 
   criarPaginaObjetivos();
 
-  // Esconde Lançamentos antes de mostrar Objetivos.
+
   if (lancamentosPage) {
-    lancamentosPage.classList.add('hidden');
+
+    lancamentosPage
+      .classList
+      .add('hidden');
+
   }
+
 
   document
     .querySelector('.app')
-    ?.classList.add('hidden');
+    ?.classList
+    .add('hidden');
+
+
+  objetivosPage
+    .classList
+    .remove('hidden');
+
 
   document
     .querySelector('.bottom-nav')
-    ?.classList.remove('lancamentos-open');
+    ?.classList
+    .remove(
+      'lancamentos-open'
+    );
+
 
   document
     .querySelector('.bottom-nav')
-    ?.classList.add('objetivos-open');
+    ?.classList
+    .add(
+      'objetivos-open'
+    );
 
-  objetivosPage.classList.remove('hidden');
 
   marcarNavAtiva(2);
 
+
   renderPaginaObjetivos();
+
 }
 
 
@@ -2944,20 +4626,29 @@ function criarPaginaObjetivos() {
     return;
   }
 
+
   objetivosPage =
-    document.createElement('div');
+    document.createElement(
+      'div'
+    );
+
 
   objetivosPage.id =
     'objetivosPage';
 
+
   objetivosPage.className =
     'finance-page hidden';
 
+
   objetivosPage.innerHTML = `
 
-    <header class="finance-page-header">
+    <header
+      class="finance-page-header"
+    >
 
       <div>
+
         <p class="eyebrow">
           MEU FINANCEIRO
         </p>
@@ -2969,12 +4660,15 @@ function criarPaginaObjetivos() {
         <p class="finance-page-subtitle">
           Transforme seus planos em conquistas
         </p>
+
       </div>
+
 
       <button
         class="finance-back-btn"
         id="backObjetivosBtn"
         aria-label="Voltar"
+        type="button"
       >
         ←
       </button>
@@ -2982,33 +4676,44 @@ function criarPaginaObjetivos() {
     </header>
 
 
-    <section class="objective-summary">
+    <section
+      class="objective-summary"
+    >
 
-      <div class="objective-summary-icon">
+      <div
+        class="objective-summary-icon"
+      >
         🎯
       </div>
 
+
       <div>
+
         <small>
           Seus objetivos
         </small>
 
-        <strong id="objetivosResumo">
+        <strong
+          id="objetivosResumo"
+        >
           0 objetivos
         </strong>
+
       </div>
 
     </section>
 
 
-    <section class="objective-actions">
+    <section
+      class="objective-actions"
+    >
 
       <button
         class="primary-action"
         id="novoObjetivoBtn"
+        type="button"
       >
-        <span>＋</span>
-        Novo objetivo
+        ＋ Novo objetivo
       </button>
 
     </section>
@@ -3021,8 +4726,11 @@ function criarPaginaObjetivos() {
 
   `;
 
+
   document
-    .getElementById('app')
+    .getElementById(
+      'app'
+    )
     ?.appendChild(
       objetivosPage
     );
@@ -3044,13 +4752,111 @@ function criarPaginaObjetivos() {
     )
     ?.addEventListener(
       'click',
-      abrirFormularioObjetivo
+      () =>
+        abrirFormularioObjetivo()
     );
+
 }
 
 
 /* =====================================================
-   RENDER OBJETIVOS
+   OBJETIVOS
+   ===================================================== */
+
+async function carregarObjetivos() {
+
+  const data =
+    await api(
+      'listarObjetivos'
+    );
+
+
+  state.objetivos =
+    Array.isArray(data)
+      ? data
+      : [];
+
+
+  return state.objetivos;
+
+}
+
+
+/* =====================================================
+   ÍCONE DO OBJETIVO
+   ===================================================== */
+
+function iconeObjetivo(
+  nome
+) {
+
+  const texto =
+    String(
+      nome || ''
+    )
+      .toLowerCase();
+
+
+  if (
+    texto.includes('carro') ||
+    texto.includes('moto') ||
+    texto.includes('veículo')
+  ) {
+    return '🚗';
+  }
+
+
+  if (
+    texto.includes('iphone') ||
+    texto.includes('celular') ||
+    texto.includes('telefone') ||
+    texto.includes('smartphone')
+  ) {
+    return '📱';
+  }
+
+
+  if (
+    texto.includes('casa') ||
+    texto.includes('apartamento') ||
+    texto.includes('imóvel')
+  ) {
+    return '🏠';
+  }
+
+
+  if (
+    texto.includes('viagem') ||
+    texto.includes('férias')
+  ) {
+    return '✈️';
+  }
+
+
+  if (
+    texto.includes('faculdade') ||
+    texto.includes('curso') ||
+    texto.includes('estudo')
+  ) {
+    return '🎓';
+  }
+
+
+  if (
+    texto.includes('reserva') ||
+    texto.includes('emergência')
+  ) {
+    return '🛟';
+  }
+
+
+  return '🎯';
+
+}
+
+
+/* =====================================================
+   RENDER DOS OBJETIVOS
    ===================================================== */
 
 function renderPaginaObjetivos() {
@@ -3060,10 +4866,12 @@ function renderPaginaObjetivos() {
       'listaObjetivosPage'
     );
 
+
   const resumo =
     document.getElementById(
       'objetivosResumo'
     );
+
 
   if (!lista) {
     return;
@@ -3084,6 +4892,7 @@ function renderPaginaObjetivos() {
       objetivos.length === 1
         ? '1 objetivo'
         : `${objetivos.length} objetivos`;
+
   }
 
 
@@ -3091,9 +4900,13 @@ function renderPaginaObjetivos() {
 
     lista.innerHTML = `
 
-      <div class="launch-empty">
+      <div
+        class="launch-empty"
+      >
 
-        <span>🎯</span>
+        <span>
+          🎯
+        </span>
 
         <strong>
           Nenhum objetivo encontrado
@@ -3103,11 +4916,13 @@ function renderPaginaObjetivos() {
           Crie seu primeiro objetivo financeiro.
         </small>
 
+
         <button
           class="primary-action"
+          type="button"
           onclick="abrirFormularioObjetivo()"
         >
-          Novo objetivo
+          ＋ Novo objetivo
         </button>
 
       </div>
@@ -3125,13 +4940,23 @@ function renderPaginaObjetivos() {
 
           const meta =
             Number(
-              objetivo.meta || 0
+              objetivo.meta ||
+              0
             );
+
 
           const guardado =
             Number(
-              objetivo.guardado ||
-              objetivo.valorInicial ||
+              objetivo.guardado ??
+              objetivo.valorInicial ??
+              0
+            );
+
+
+          const falta =
+            Math.max(
+              meta -
+              guardado,
               0
             );
 
@@ -3157,17 +4982,8 @@ function renderPaginaObjetivos() {
             );
 
 
-          const prioridade =
-            objetivo.prioridade ||
-            'Média';
-
-
-          const prazo =
-            objetivo.prazo
-              ? formatDate(
-                  objetivo.prazo
-                )
-              : 'Sem prazo';
+          const concluido =
+            percentual >= 100;
 
 
           return `
@@ -3187,8 +5003,11 @@ function renderPaginaObjetivos() {
                   <span
                     class="objective-icon"
                   >
-                    🎯
+                    ${iconeObjetivo(
+                      objetivo.nome
+                    )}
                   </span>
+
 
                   <div>
 
@@ -3199,10 +5018,12 @@ function renderPaginaObjetivos() {
                       )}
                     </strong>
 
+
                     <small>
                       Prioridade:
                       ${escapeHtml(
-                        prioridade
+                        objetivo.prioridade ||
+                        'Média'
                       )}
                     </small>
 
@@ -3239,11 +5060,12 @@ function renderPaginaObjetivos() {
                 class="objective-values"
               >
 
-                <span>
+                <strong>
                   ${formatMoney(
                     guardado
                   )}
-                </span>
+                </strong>
+
 
                 <span>
                   de
@@ -3256,18 +5078,107 @@ function renderPaginaObjetivos() {
 
 
               <div
-                class="objective-footer"
+                class="objective-detail"
               >
 
                 <span>
-                  📅 ${prazo}
+                  Falta:
+                  <b>
+                    ${formatMoney(
+                      falta
+                    )}
+                  </b>
                 </span>
 
+
                 <span>
-                  ${percentual >= 100
-                    ? '✓ Concluído'
-                    : 'Em andamento'}
+                  📅 ${
+                    objetivo.prazo
+                      ? formatDate(
+                          objetivo.prazo
+                        )
+                      : 'Sem prazo'
+                  }
                 </span>
+
+              </div>
+
+
+              <div
+                class="objective-status-row"
+              >
+
+                <span
+                  class="${
+                    concluido
+                      ? 'objective-complete'
+                      : 'objective-active'
+                  }"
+                >
+                  ${
+                    concluido
+                      ? '✓ Concluído'
+                      : '● Em andamento'
+                  }
+                </span>
+
+              </div>
+
+
+              <div
+                class="objective-actions-row"
+              >
+
+                ${
+                  !concluido
+                    ? `
+                      <button
+                        type="button"
+                        class="objective-secondary-btn"
+                        data-action="aporte"
+                        data-id="${
+                          escapeAttribute(
+                            objetivo.id
+                          )
+                        }"
+                      >
+                        💰 Adicionar dinheiro
+                      </button>
+                    `
+                    : ''
+                }
+
+
+                <button
+                  type="button"
+                  class="objective-icon-btn"
+                  data-action="editar"
+                  data-id="${
+                    escapeAttribute(
+                      objetivo.id
+                    )
+                  }"
+                  aria-label="Editar objetivo"
+                  title="Editar objetivo"
+                >
+                  ✏️
+                </button>
+
+
+                <button
+                  type="button"
+                  class="objective-icon-btn danger"
+                  data-action="excluir"
+                  data-id="${
+                    escapeAttribute(
+                      objetivo.id
+                    )
+                  }"
+                  aria-label="Excluir objetivo"
+                  title="Excluir objetivo"
+                >
+                  🗑️
+                </button>
 
               </div>
 
@@ -3278,36 +5189,92 @@ function renderPaginaObjetivos() {
         }
       )
       .join('');
+
+
+  lista
+    .querySelectorAll(
+      '[data-action="aporte"]'
+    )
+    .forEach(
+      button =>
+        button.addEventListener(
+          'click',
+          () =>
+            abrirModalAporte(
+              button.dataset.id
+            )
+        )
+    );
+
+
+  lista
+    .querySelectorAll(
+      '[data-action="editar"]'
+    )
+    .forEach(
+      button =>
+        button.addEventListener(
+          'click',
+          () =>
+            abrirFormularioObjetivo(
+              button.dataset.id
+            )
+        )
+    );
+
+
+  lista
+    .querySelectorAll(
+      '[data-action="excluir"]'
+    )
+    .forEach(
+      button =>
+        button.addEventListener(
+          'click',
+          () =>
+            excluirObjetivoDaPagina(
+              button.dataset.id
+            )
+        )
+    );
+
 }
 
 
 /* =====================================================
-   NOVO OBJETIVO
+   FORMULÁRIO DE OBJETIVO
    ===================================================== */
 
-function abrirFormularioObjetivo() {
+function abrirFormularioObjetivo(
+  id = null
+) {
 
   const existente =
-    document.getElementById(
+    id
+      ? state.objetivos.find(
+          item =>
+            String(item.id) ===
+            String(id)
+        )
+      : null;
+
+
+  document
+    .getElementById(
       'modalObjetivo'
-    );
-
-  if (existente) {
-    existente.remove();
-  }
-
-
-  const hoje =
-    new Date()
-      .toISOString()
-      .split('T')[0];
+    )
+    ?.remove();
 
 
   const modal =
-    document.createElement('div');
+    document.createElement(
+      'div'
+    );
+
 
   modal.id =
     'modalObjetivo';
+
 
   modal.className =
     'finance-modal';
@@ -3332,11 +5299,20 @@ function abrirFormularioObjetivo() {
         <div>
 
           <p class="eyebrow">
-            NOVO OBJETIVO
+            ${
+              existente
+                ? 'EDITAR OBJETIVO'
+                : 'NOVO OBJETIVO'
+            }
           </p>
 
+
           <h2>
-            Criar objetivo
+            ${
+              existente
+                ? 'Editar objetivo'
+                : 'Criar objetivo'
+            }
           </h2>
 
         </div>
@@ -3345,6 +5321,7 @@ function abrirFormularioObjetivo() {
         <button
           class="modal-close"
           id="fecharModalObjetivo"
+          type="button"
         >
           ×
         </button>
@@ -3357,16 +5334,20 @@ function abrirFormularioObjetivo() {
       >
 
         <label>
-
           Nome
 
           <input
             id="objetivoNome"
             type="text"
             placeholder="Ex.: Viagem"
+            value="${
+              escapeAttribute(
+                existente?.nome ||
+                ''
+              )
+            }"
             required
           >
-
         </label>
 
 
@@ -3375,7 +5356,6 @@ function abrirFormularioObjetivo() {
         >
 
           <label>
-
             Meta
 
             <input
@@ -3384,14 +5364,16 @@ function abrirFormularioObjetivo() {
               min="0.01"
               step="0.01"
               placeholder="0,00"
+              value="${
+                existente?.meta ??
+                ''
+              }"
               required
             >
-
           </label>
 
 
           <label>
-
             Valor inicial
 
             <input
@@ -3399,9 +5381,11 @@ function abrirFormularioObjetivo() {
               type="number"
               min="0"
               step="0.01"
-              value="0"
+              value="${
+                existente?.valorInicial ??
+                0
+              }"
             >
-
           </label>
 
         </div>
@@ -3412,37 +5396,62 @@ function abrirFormularioObjetivo() {
         >
 
           <label>
-
             Prazo
 
             <input
               id="objetivoPrazo"
               type="date"
+              value="${
+                existente?.prazo ||
+                ''
+              }"
             >
-
           </label>
 
 
           <label>
-
             Prioridade
 
             <select
               id="objetivoPrioridade"
             >
 
-              <option value="Baixa">
+              <option
+                value="Baixa"
+                ${
+                  existente?.prioridade ===
+                  'Baixa'
+                    ? 'selected'
+                    : ''
+                }
+              >
                 Baixa
               </option>
 
+
               <option
                 value="Média"
-                selected
+                ${
+                  !existente ||
+                  existente?.prioridade ===
+                  'Média'
+                    ? 'selected'
+                    : ''
+                }
               >
                 Média
               </option>
 
-              <option value="Alta">
+
+              <option
+                value="Alta"
+                ${
+                  existente?.prioridade ===
+                  'Alta'
+                    ? 'selected'
+                    : ''
+                }
+              >
                 Alta
               </option>
 
@@ -3454,14 +5463,18 @@ function abrirFormularioObjetivo() {
 
 
         <label>
-
           Observação
 
           <textarea
             id="objetivoObservacao"
             rows="3"
             placeholder="Opcional"
-          ></textarea>
+          >${
+            escapeHtml(
+              existente?.observacao ||
+              ''
+            )
+          }</textarea>
 
         </label>
 
@@ -3476,7 +5489,11 @@ function abrirFormularioObjetivo() {
           type="submit"
           class="primary-action"
         >
-          Criar objetivo
+          ${
+            existente
+              ? 'Salvar alterações'
+              : 'Criar objetivo'
+          }
         </button>
 
       </form>
@@ -3487,7 +5504,9 @@ function abrirFormularioObjetivo() {
 
 
   document
-    .getElementById('app')
+    .getElementById(
+      'app'
+    )
     ?.appendChild(
       modal
     );
@@ -3519,22 +5538,13 @@ function abrirFormularioObjetivo() {
     )
     ?.addEventListener(
       'submit',
-      salvarObjetivoFormulario
+      event =>
+        salvarObjetivoFormulario(
+          event,
+          id
+        )
     );
-}
 
-
-/* =====================================================
-   FECHAR MODAL
-   ===================================================== */
-
-function fecharModalObjetivo() {
-
-  document
-    .getElementById(
-      'modalObjetivo'
-    )
-    ?.remove();
 }
 
 
@@ -3543,15 +5553,27 @@ function fecharModalObjetivo() {
    ===================================================== */
 
 async function salvarObjetivoFormulario(
-  event
+  event,
+  id = null
 ) {
 
   event.preventDefault();
+
 
   const erro =
     document.getElementById(
       'objetivoFormErro'
     );
+
+
+  const button =
+    document
+      .getElementById(
+        'formObjetivo'
+      )
+      ?.querySelector(
+        'button[type="submit"]'
+      );
 
 
   try {
@@ -3561,7 +5583,33 @@ async function salvarObjetivoFormulario(
     }
 
 
+    if (button) {
+
+      button.disabled =
+        true;
+
+      button.textContent =
+        id
+          ? 'Salvando alterações...'
+          : 'Criando...';
+
+    }
+
+
+    const existente =
+      id
+        ? state.objetivos.find(
+            item =>
+              String(item.id) ===
+              String(id)
+          )
+        : null;
+
+
     const dados = {
+
+      id:
+        id || undefined,
 
       escopo:
         state.escopo,
@@ -3589,8 +5637,13 @@ async function salvarObjetivoFormulario(
             .getElementById(
               'objetivoValorInicial'
             )
-            .value || 0
+            .value ||
+          0
         ),
+
+      dataCriacao:
+        existente?.dataCriacao ||
+        undefined,
 
       prazo:
         document
@@ -3612,7 +5665,10 @@ async function salvarObjetivoFormulario(
             'objetivoObservacao'
           )
           .value
-          .trim()
+          .trim(),
+
+      ativo:
+        true
 
     };
 
@@ -3632,39 +5688,529 @@ async function salvarObjetivoFormulario(
     ) {
 
       throw new Error(
-        'Informe uma meta válida.'
+        'Informe uma meta maior que zero.'
       );
 
     }
 
 
-    /*
-     * IMPORTANTE:
-     * Ainda não enviamos para a API.
-     *
-     * O próximo passo será conectar
-     * esta função à ação do Apps Script
-     * responsável por criar objetivos.
-     */
+    await api(
+      'salvarObjetivo',
+      dados,
+      'POST'
+    );
 
-    throw new Error(
-      'A criação de objetivos será conectada ao servidor na próxima etapa.'
+
+    fecharModalObjetivo();
+
+
+    await carregarObjetivos();
+
+
+    state.dashboard =
+      null;
+
+    state.dashboardCarregado =
+      false;
+
+
+    renderPaginaObjetivos();
+
+
+    await carregarDashboard(
+      true
     );
 
 
   } catch (error) {
 
     console.error(
+      'Salvar objetivo:',
       error
     );
+
 
     if (erro) {
 
       erro.textContent =
-        error.message;
+        error.message ||
+        'Não foi possível salvar o objetivo.';
+
+    }
+
+  } finally {
+
+    if (button) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        id
+          ? 'Salvar alterações'
+          : 'Criar objetivo';
 
     }
 
   }
+
+}
+
+
+/* =====================================================
+   APORTES
+   ===================================================== */
+
+function abrirModalAporte(
+  objetivoId
+) {
+
+  const objetivo =
+    state.objetivos.find(
+      item =>
+        String(item.id) ===
+        String(objetivoId)
+    );
+
+
+  if (!objetivo) {
+
+    alert(
+      'Objetivo não encontrado.'
+    );
+
+    return;
+
+  }
+
+
+  document
+    .getElementById(
+      'modalAporte'
+    )
+    ?.remove();
+
+
+  const modal =
+    document.createElement(
+      'div'
+    );
+
+
+  modal.id =
+    'modalAporte';
+
+
+  modal.className =
+    'finance-modal';
+
+
+  modal.innerHTML = `
+
+    <div
+      class="finance-modal-backdrop"
+      id="aporteBackdrop"
+    ></div>
+
+
+    <div
+      class="finance-modal-card"
+    >
+
+      <header
+        class="finance-modal-header"
+      >
+
+        <div>
+
+          <p class="eyebrow">
+            ${escapeHtml(
+              objetivo.nome
+            )}
+          </p>
+
+          <h2>
+            Adicionar dinheiro
+          </h2>
+
+        </div>
+
+
+        <button
+          class="modal-close"
+          id="fecharModalAporte"
+          type="button"
+        >
+          ×
+        </button>
+
+      </header>
+
+
+      <form
+        id="formAporte"
+      >
+
+        <label>
+          Valor
+
+          <input
+            id="aporteValor"
+            type="number"
+            min="0.01"
+            step="0.01"
+            placeholder="0,00"
+            required
+          >
+        </label>
+
+
+        <label>
+          Data
+
+          <input
+            id="aporteData"
+            type="date"
+            value="${
+              new Date()
+                .toISOString()
+                .split('T')[0]
+            }"
+            required
+          >
+        </label>
+
+
+        <label>
+          Observação
+
+          <textarea
+            id="aporteObservacao"
+            rows="3"
+            placeholder="Opcional"
+          ></textarea>
+        </label>
+
+
+        <div
+          id="aporteErro"
+          class="form-error"
+        ></div>
+
+
+        <button
+          type="submit"
+          class="primary-action"
+        >
+          Adicionar dinheiro
+        </button>
+
+      </form>
+
+    </div>
+
+  `;
+
+
+  document
+    .getElementById(
+      'app'
+    )
+    ?.appendChild(
+      modal
+    );
+
+
+  document
+    .getElementById(
+      'fecharModalAporte'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        modal.remove()
+    );
+
+
+  document
+    .getElementById(
+      'aporteBackdrop'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        modal.remove()
+    );
+
+
+  document
+    .getElementById(
+      'formAporte'
+    )
+    ?.addEventListener(
+      'submit',
+      event =>
+        salvarAporte(
+          event,
+          objetivoId
+        )
+    );
+
+}
+
+
+async function salvarAporte(
+  event,
+  objetivoId
+) {
+
+  event.preventDefault();
+
+
+  const erro =
+    document.getElementById(
+      'aporteErro'
+    );
+
+
+  const button =
+    document
+      .getElementById(
+        'formAporte'
+      )
+      ?.querySelector(
+        'button[type="submit"]'
+      );
+
+
+  try {
+
+    if (erro) {
+      erro.textContent = '';
+    }
+
+
+    if (button) {
+
+      button.disabled =
+        true;
+
+      button.textContent =
+        'Salvando...';
+
+    }
+
+
+    const valor =
+      Number(
+        document
+          .getElementById(
+            'aporteValor'
+          )
+          .value
+      );
+
+
+    if (
+      !valor ||
+      valor <= 0
+    ) {
+
+      throw new Error(
+        'Informe um valor maior que zero.'
+      );
+
+    }
+
+
+    await api(
+      'adicionarAporte',
+      {
+
+        objetivoId:
+          objetivoId,
+
+        valor:
+          valor,
+
+        data:
+          document
+            .getElementById(
+              'aporteData'
+            )
+            .value,
+
+        observacao:
+          document
+            .getElementById(
+              'aporteObservacao'
+            )
+            .value
+            .trim()
+
+      },
+      'POST'
+    );
+
+
+    document
+      .getElementById(
+        'modalAporte'
+      )
+      ?.remove();
+
+
+    await carregarObjetivos();
+
+
+    state.dashboard =
+      null;
+
+    state.dashboardCarregado =
+      false;
+
+
+    renderPaginaObjetivos();
+
+
+    await carregarDashboard(
+      true
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      'Aporte:',
+      error
+    );
+
+
+    if (erro) {
+
+      erro.textContent =
+        error.message ||
+        'Não foi possível adicionar o aporte.';
+
+    }
+
+  } finally {
+
+    if (button) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        'Adicionar dinheiro';
+
+    }
+
+  }
+
+}
+
+
+/* =====================================================
+   EXCLUIR OBJETIVO
+   ===================================================== */
+
+async function excluirObjetivoDaPagina(
+  id
+) {
+
+  const objetivo =
+    state.objetivos.find(
+      item =>
+        String(item.id) ===
+        String(id)
+    );
+
+
+  const confirmado =
+    window.confirm(
+      `Excluir "${objetivo?.nome || 'este objetivo'}"?\n\nEssa ação não pode ser desfeita.`
+    );
+
+
+  if (!confirmado) {
+    return;
+  }
+
+
+  try {
+
+    await api(
+      'excluirObjetivo',
+      {
+        id:
+          id
+      },
+      'POST'
+    );
+
+
+    await carregarObjetivos();
+
+
+    state.dashboard =
+      null;
+
+    state.dashboardCarregado =
+      false;
+
+
+    renderPaginaObjetivos();
+
+
+    await carregarDashboard(
+      true
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      'Excluir objetivo:',
+      error
+    );
+
+
+    alert(
+      error.message ||
+      'Não foi possível excluir o objetivo.'
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   FECHAR MODAL DE OBJETIVO
+   ===================================================== */
+
+function fecharModalObjetivo() {
+
+  document
+    .getElementById(
+      'modalObjetivo'
+    )
+    ?.remove();
+
+}
+
+
+/* =====================================================
+   FECHAR MODAL DE APORTE
+   ===================================================== */
+
+function fecharModalAporte() {
+
+  document
+    .getElementById(
+      'modalAporte'
+    )
+    ?.remove();
 
 }
