@@ -41,18 +41,7 @@ const state = {
 
   categorias: [],
 
-  recorrentes: [],
-
-  /*
-   * Cache da sessão.
-   * Evita chamadas repetidas ao servidor ao trocar de aba.
-   */
-  lancamentosCarregados: false,
-
-  lancamentosCarregando: null,
-
-  dashboardCarregado: false
-
+  recorrentes: []
 };
 
 
@@ -264,14 +253,14 @@ async function carregarAplicacao() {
 
   try {
 
-    mostrarCarregando(true);
-
+    mostrarCarregando(
+      true
+    );
 
     const data =
       await api(
         'getInitialData'
       );
-
 
     state.initialData =
       data;
@@ -295,35 +284,18 @@ async function carregarAplicacao() {
       data.recorrentes ||
       [];
 
+    /*
+     * Por padrão começa no espaço pessoal.
+     */
 
     state.escopo =
       state.user.nome;
 
-
     atualizarInterfaceUsuario();
 
-    atualizarMesAtual();
+    await carregarDashboard();
 
-
-    /*
-     * Primeira carga da sessão:
-     * dashboard + histórico de lançamentos.
-     */
-    await Promise.all([
-      carregarDashboard(true),
-      carregarLancamentos({}, true)
-    ]);
-
-
-    /*
-     * Só liberamos a aplicação depois que
-     * os dados reais chegaram.
-     */
-    document
-      .getElementById('app')
-      ?.classList
-      .remove('hidden');
-
+    carregarLancamentos();
 
   } catch (error) {
 
@@ -335,49 +307,38 @@ async function carregarAplicacao() {
       error.message
     );
 
+    /*
+     * Se o token estiver inválido,
+     * voltamos ao login.
+     */
 
     if (
-      String(
-        error.message || ''
-      )
-      .toLowerCase()
-      .includes('identificar')
+      error.message
+        .toLowerCase()
+        .includes('identificar')
     ) {
 
       logout();
-
     }
 
   } finally {
 
-    mostrarCarregando(false);
-
+    mostrarCarregando(
+      false
+    );
   }
-
 }
-async function carregarDashboard(
-  forcarAtualizacao = false
-) {
+
+
+/* =====================================================
+   DASHBOARD
+   ===================================================== */
+
+async function carregarDashboard() {
 
   if (!state.escopo) {
-    return null;
+    return;
   }
-
-
-  if (
-    state.dashboardCarregado &&
-    state.dashboard &&
-    !forcarAtualizacao
-  ) {
-
-    renderDashboard(
-      state.dashboard
-    );
-
-    return state.dashboard;
-
-  }
-
 
   try {
 
@@ -390,20 +351,12 @@ async function carregarDashboard(
         }
       );
 
-
     state.dashboard =
       data;
-
-    state.dashboardCarregado =
-      true;
-
 
     renderDashboard(
       data
     );
-
-
-    return data;
 
   } catch (error) {
 
@@ -415,47 +368,7 @@ async function carregarDashboard(
     mostrarErro(
       error.message
     );
-
-    return null;
-
   }
-
-}
-
-function atualizarMesAtual() {
-
-  const elemento =
-    document.getElementById(
-      'currentMonth'
-    );
-
-  if (!elemento) {
-    return;
-  }
-
-
-  const agora =
-    new Date();
-
-
-  let texto =
-    agora.toLocaleDateString(
-      'pt-BR',
-      {
-        month: 'long',
-        year: 'numeric'
-      }
-    );
-
-
-  texto =
-    texto.charAt(0).toUpperCase() +
-    texto.slice(1);
-
-
-  elemento.textContent =
-    texto;
-
 }
 
 
@@ -720,102 +633,46 @@ function renderUltimosLancamentos(
    ===================================================== */
 
 async function carregarLancamentos(
-  filtros = {},
-  forcarAtualizacao = false
+  filtros = {}
 ) {
 
-  const possuiFiltros =
-    Object.keys(
-      filtros || {}
-    ).length > 0;
+  try {
 
-
-  if (
-    state.lancamentosCarregados &&
-    !forcarAtualizacao &&
-    !possuiFiltros
-  ) {
-
-    return state.lancamentos;
-
-  }
-
-
-  if (
-    state.lancamentosCarregando &&
-    !forcarAtualizacao
-  ) {
-
-    return state.lancamentosCarregando;
-
-  }
-
-
-  const buscar =
-    async () => {
-
-      try {
-
-        const data =
-          await api(
-            'listarLancamentos',
-            {
-              ...filtros,
-              escopo:
-                state.escopo
-            }
-          );
-
-
-        const lista =
-          Array.isArray(data)
-            ? data
-            : [];
-
-
-        if (!possuiFiltros) {
-
-          state.lancamentos =
-            lista;
-
-          state.lancamentosCarregados =
-            true;
-
+    const data =
+      await api(
+        'listarLancamentos',
+        {
+          ...filtros,
+          escopo:
+            state.escopo
         }
+      );
 
+    state.lancamentos =
+      data;
 
-        return lista;
+    return data;
 
-      } catch (error) {
+  } catch (error) {
 
-        console.error(
-          'Lançamentos:',
-          error
-        );
+    console.error(
+      'Lançamentos:',
+      error
+    );
 
-        mostrarErro(
-          error.message
-        );
+    mostrarErro(
+      error.message
+    );
 
-        return [];
-
-      } finally {
-
-        state.lancamentosCarregando =
-          null;
-
-      }
-
-    };
-
-
-  state.lancamentosCarregando =
-    buscar();
-
-
-  return state.lancamentosCarregando;
-
+    return [];
+  }
 }
+
+
+/* =====================================================
+   USUÁRIO / ESCOPO
+   ===================================================== */
+
 function atualizarInterfaceUsuario() {
 
   if (!state.user) {
@@ -917,57 +774,19 @@ async function trocarEscopo(
     return;
   }
 
-
   state.escopo =
     escopo;
 
+  await carregarDashboard();
 
-  state.lancamentos =
-    [];
-
-  state.lancamentosCarregados =
-    false;
-
-  state.lancamentosCarregando =
-    null;
-
-  state.dashboard =
-    null;
-
-  state.dashboardCarregado =
-    false;
-
-
-  await Promise.all([
-    carregarDashboard(true),
-    carregarLancamentos({}, true)
-  ]);
-
-
-  if (
-    objetivosPage &&
-    !objetivosPage.classList.contains(
-      'hidden'
-    )
-  ) {
-
-    renderPaginaObjetivos();
-
-  }
-
-
-  if (
-    lancamentosPage &&
-    !lancamentosPage.classList.contains(
-      'hidden'
-    )
-  ) {
-
-    await atualizarListaLancamentosPage();
-
-  }
-
+  await carregarLancamentos();
 }
+
+
+/* =====================================================
+   TEMA
+   ===================================================== */
+
 function configurarTema() {
 
   const button =
@@ -1053,11 +872,6 @@ function showApp(
   user
 ) {
 
-  /*
-   * Esconde o login imediatamente,
-   * mas mantém o app principal oculto
-   * até os dados reais terminarem de carregar.
-   */
   document
     .getElementById(
       'loginScreen'
@@ -1066,19 +880,22 @@ function showApp(
       'hidden'
     );
 
-
   document
     .getElementById(
       'app'
     )
-    ?.classList.add(
+    ?.classList.remove(
       'hidden'
     );
 
-
   atualizarInterfaceUsuario();
-
 }
+
+
+/* =====================================================
+   GOOGLE INITIALIZATION
+   ===================================================== */
+
 function inicializarGoogle() {
 
   const status =
@@ -1092,11 +909,9 @@ function inicializarGoogle() {
     );
 
   if (!button) {
-
     console.error(
       'Elemento #googleButton não foi encontrado.'
     );
-
     return;
   }
 
@@ -1105,7 +920,6 @@ function inicializarGoogle() {
   ) {
 
     if (status) {
-
       status.textContent =
         'Carregando login do Google...';
     }
@@ -1164,7 +978,6 @@ function inicializarGoogle() {
     );
 
     if (status) {
-
       status.textContent = '';
     }
 
@@ -1176,7 +989,6 @@ function inicializarGoogle() {
     );
 
     if (status) {
-
       status.textContent =
         'Não foi possível carregar o login do Google. Tente atualizar a página.';
     }
@@ -1413,53 +1225,9 @@ function mostrarCarregando(
       'loading',
       ativo
     );
-
-
-  let overlay =
-    document.getElementById(
-      'financeLoading'
-    );
-
-
-  if (
-    ativo &&
-    !overlay
-  ) {
-
-    overlay =
-      document.createElement(
-        'div'
-      );
-
-    overlay.id =
-      'financeLoading';
-
-    overlay.innerHTML = `
-      <div class="finance-loading-card">
-        <div class="finance-spinner"></div>
-        <strong>Carregando seus dados</strong>
-        <small>Um momento...</small>
-      </div>
-    `;
-
-    document.body
-      .appendChild(
-        overlay
-      );
-
-  }
-
-
-  if (
-    !ativo &&
-    overlay
-  ) {
-
-    overlay.remove();
-
-  }
-
 }
+
+
 function mostrarErro(
   mensagem
 ) {
@@ -1492,96 +1260,42 @@ function configurarEventos() {
 
   configurarTema();
 
+  const logoutButton =
+    document.getElementById('logoutBtn');
 
-  document
-    .getElementById('logoutBtn')
-    ?.addEventListener(
+  if (logoutButton) {
+    logoutButton.addEventListener(
       'click',
       logout
     );
+  }
 
+  // =========================
+  // NOVO LANÇAMENTO
+  // =========================
 
-  /*
-   * Atalho flutuante.
-   */
   document
     .querySelector('.fab')
     ?.addEventListener(
       'click',
-      () =>
-        abrirPaginaLancamentos(
-          true
-        )
+      () => abrirPaginaLancamentos(true)
     );
-
-
-  /*
-   * "Novo lançamento".
-   */
-  document
-    .getElementById(
-      'quickNovoLancamento'
-    )
-    ?.addEventListener(
-      'click',
-      () =>
-        abrirPaginaLancamentos(
-          true
-        )
-    );
-
-
-  /*
-   * "Recorrentes" fica reservado
-   * para a próxima etapa.
-   */
-  document
-    .getElementById(
-      'quickRecorrentes'
-    )
-    ?.addEventListener(
-      'click',
-      () =>
-        alert(
-          'A aba Recorrentes será conectada na próxima etapa.'
-        )
-    );
-
-
-  /*
-   * Ver todos.
-   */
-  document
-    .getElementById(
-      'verTodosObjetivosBtn'
-    )
-    ?.addEventListener(
-      'click',
-      abrirPaginaObjetivos
-    );
-
 
   document
-    .getElementById(
-      'verTodosLancamentosBtn'
-    )
+    .querySelector('.quick-card')
     ?.addEventListener(
       'click',
-      () =>
-        abrirPaginaLancamentos(
-          false
-        )
+      () => abrirPaginaLancamentos(true)
     );
 
+  // =========================
+  // NAVEGAÇÃO INFERIOR
+  // =========================
 
-  /*
-   * Navegação inferior.
-   */
   const navButtons =
     document.querySelectorAll(
       '.bottom-nav button'
     );
-
 
   navButtons.forEach(
     (button, index) => {
@@ -1591,51 +1305,31 @@ function configurarEventos() {
         () => {
 
           if (index === 0) {
-
             voltarInicio();
-
             return;
-
           }
-
 
           if (index === 1) {
-
-            abrirPaginaLancamentos(
-              false
-            );
-
+            abrirPaginaLancamentos(false);
             return;
-
           }
 
-
-          if (index === 2) {
-
-            abrirPaginaObjetivos();
-
-            return;
-
-          }
-
+         if (index === 2) {
+  abrirPaginaObjetivos();
+  return;
+}
 
           if (index === 3) {
-
             alert(
               'A aba Relatórios será conectada na próxima etapa.'
             );
-
             return;
-
           }
 
-
           if (index === 4) {
-
             alert(
               'A aba Ajustes será conectada na próxima etapa.'
             );
-
           }
 
         }
@@ -1644,127 +1338,159 @@ function configurarEventos() {
     }
   );
 
+  // =========================
+  // SELETOR DE ESPAÇO
+  // =========================
 
   document
-    .getElementById(
-      'scopeSelect'
-    )
+    .getElementById('scopeSelect')
     ?.addEventListener(
       'change',
-      event =>
+      event => {
         trocarEscopo(
           event.target.value
-        )
+        );
+      }
     );
-
 }
+
+
+/* =====================================================
+   INICIALIZAÇÃO
+   ===================================================== */
+
+let appInicializado = false;
+
+function iniciarAplicacao() {
+
+  if (appInicializado) {
+    return;
+  }
+
+  appInicializado = true;
+
+  configurarEventos();
+
+  /*
+   * O login do Google pode terminar de carregar
+   * depois do app.js. A própria função espera até
+   * a biblioteca estar disponível.
+   */
+  inicializarGoogle();
+
+  /*
+   * Tenta restaurar a sessão anterior.
+   */
+  restaurarSessao();
+}
+
+
+if (
+  document.readyState ===
+  'loading'
+) {
+
+  document.addEventListener(
+    'DOMContentLoaded',
+    iniciarAplicacao,
+    {
+      once: true
+    }
+  );
+
+} else {
+
+  iniciarAplicacao();
+}
+
+
+/* =====================================================
+   PÁGINA DE LANÇAMENTOS
+   ===================================================== */
+
+let lancamentosPage = null;
+
+
+/* =====================================================
+   ABRIR LANÇAMENTOS
+   ===================================================== */
+
 async function abrirPaginaLancamentos(
   abrirFormulario = false
 ) {
 
   criarPaginaLancamentos();
 
-
+  // Esconde Objetivos antes de mostrar Lançamentos.
   if (objetivosPage) {
-
-    objetivosPage
-      .classList
-      .add('hidden');
-
+    objetivosPage.classList.add('hidden');
   }
-
 
   document
     .querySelector('.app')
-    ?.classList
-    .add('hidden');
-
-
-  lancamentosPage
-    .classList
-    .remove('hidden');
-
+    ?.classList.add('hidden');
 
   document
     .querySelector('.bottom-nav')
-    ?.classList
-    .remove('objetivos-open');
-
+    ?.classList.remove('objetivos-open');
 
   document
     .querySelector('.bottom-nav')
-    ?.classList
-    .add('lancamentos-open');
+    ?.classList.add('lancamentos-open');
 
+  lancamentosPage.classList.remove(
+    'hidden'
+  );
 
   marcarNavAtiva(1);
 
-
-  /*
-   * Só consulta o servidor se ainda não
-   * houver dados nesta sessão.
-   */
   await atualizarListaLancamentosPage();
 
-
   if (abrirFormulario) {
-
     abrirFormularioLancamento();
-
   }
-
 }
+
+
+/* =====================================================
+   VOLTAR PARA INÍCIO
+   ===================================================== */
+
 function voltarInicio() {
 
   if (lancamentosPage) {
-
-    lancamentosPage
-      .classList
-      .add('hidden');
-
+    lancamentosPage.classList.add(
+      'hidden'
+    );
   }
-
 
   if (objetivosPage) {
-
-    objetivosPage
-      .classList
-      .add('hidden');
-
+    objetivosPage.classList.add(
+      'hidden'
+    );
   }
-
 
   document
     .querySelector('.app')
-    ?.classList
-    .remove('hidden');
-
+    ?.classList.remove('hidden');
 
   document
     .querySelector('.bottom-nav')
-    ?.classList
-    .remove(
+    ?.classList.remove(
       'lancamentos-open',
       'objetivos-open'
     );
 
-
   marcarNavAtiva(0);
 
-
-  /*
-   * Renderiza o dashboard já carregado.
-   * Não faz nova chamada só por voltar à aba Início.
-   */
-  if (state.dashboard) {
-
-    renderDashboard(
-      state.dashboard
-    );
-
-  }
-
+  carregarDashboard();
 }
+
+
+/* =====================================================
+   CRIA A PÁGINA
+   ===================================================== */
+
 function criarPaginaLancamentos() {
 
   if (lancamentosPage) {
@@ -3183,49 +2909,35 @@ async function abrirPaginaObjetivos() {
 
   criarPaginaObjetivos();
 
-
+  // Esconde Lançamentos antes de mostrar Objetivos.
   if (lancamentosPage) {
-
-    lancamentosPage
-      .classList
-      .add('hidden');
-
+    lancamentosPage.classList.add('hidden');
   }
-
 
   document
     .querySelector('.app')
-    ?.classList
-    .add('hidden');
-
-
-  objetivosPage
-    .classList
-    .remove('hidden');
-
+    ?.classList.add('hidden');
 
   document
     .querySelector('.bottom-nav')
-    ?.classList
-    .remove('lancamentos-open');
-
+    ?.classList.remove('lancamentos-open');
 
   document
     .querySelector('.bottom-nav')
-    ?.classList
-    .add('objetivos-open');
+    ?.classList.add('objetivos-open');
 
+  objetivosPage.classList.remove('hidden');
 
   marcarNavAtiva(2);
 
-
-  /*
-   * Os objetivos já vêm no dashboard inicial.
-   * Portanto, trocar de aba não faz outra requisição.
-   */
   renderPaginaObjetivos();
-
 }
+
+
+/* =====================================================
+   CRIAR PÁGINA
+   ===================================================== */
+
 function criarPaginaObjetivos() {
 
   if (objetivosPage) {
@@ -3573,26 +3285,26 @@ function renderPaginaObjetivos() {
    NOVO OBJETIVO
    ===================================================== */
 
-function abrirFormularioObjetivo(
-  objetivoEditando = null
-) {
+function abrirFormularioObjetivo() {
 
-  document
-    .getElementById(
+  const existente =
+    document.getElementById(
       'modalObjetivo'
-    )
-    ?.remove();
+    );
+
+  if (existente) {
+    existente.remove();
+  }
+
+
+  const hoje =
+    new Date()
+      .toISOString()
+      .split('T')[0];
 
 
   const modal =
-    document.createElement(
-      'div'
-    );
-
-
-  const editando =
-    !!objetivoEditando;
-
+    document.createElement('div');
 
   modal.id =
     'modalObjetivo';
@@ -3620,29 +3332,19 @@ function abrirFormularioObjetivo(
         <div>
 
           <p class="eyebrow">
-            ${
-              editando
-                ? 'EDITAR OBJETIVO'
-                : 'NOVO OBJETIVO'
-            }
+            NOVO OBJETIVO
           </p>
 
           <h2>
-            ${
-              editando
-                ? 'Editar objetivo'
-                : 'Criar objetivo'
-            }
+            Criar objetivo
           </h2>
 
         </div>
 
 
         <button
-          type="button"
           class="modal-close"
           id="fecharModalObjetivo"
-          aria-label="Fechar"
         >
           ×
         </button>
@@ -3662,12 +3364,6 @@ function abrirFormularioObjetivo(
             id="objetivoNome"
             type="text"
             placeholder="Ex.: Viagem"
-            value="${
-              escapeAttribute(
-                objetivoEditando?.nome ||
-                ''
-              )
-            }"
             required
           >
 
@@ -3688,10 +3384,6 @@ function abrirFormularioObjetivo(
               min="0.01"
               step="0.01"
               placeholder="0,00"
-              value="${
-                objetivoEditando?.meta ??
-                ''
-              }"
               required
             >
 
@@ -3707,10 +3399,7 @@ function abrirFormularioObjetivo(
               type="number"
               min="0"
               step="0.01"
-              value="${
-                objetivoEditando?.valorInicial ??
-                0
-              }"
+              value="0"
             >
 
           </label>
@@ -3729,10 +3418,6 @@ function abrirFormularioObjetivo(
             <input
               id="objetivoPrazo"
               type="date"
-              value="${
-                objetivoEditando?.prazo ||
-                ''
-              }"
             >
 
           </label>
@@ -3746,42 +3431,18 @@ function abrirFormularioObjetivo(
               id="objetivoPrioridade"
             >
 
-              <option
-                value="Baixa"
-                ${
-                  objetivoEditando?.prioridade ===
-                  'Baixa'
-                    ? 'selected'
-                    : ''
-                }
-              >
+              <option value="Baixa">
                 Baixa
               </option>
 
-
               <option
                 value="Média"
-                ${
-                  !objetivoEditando ||
-                  objetivoEditando.prioridade ===
-                  'Média'
-                    ? 'selected'
-                    : ''
-                }
+                selected
               >
                 Média
               </option>
 
-
-              <option
-                value="Alta"
-                ${
-                  objetivoEditando?.prioridade ===
-                  'Alta'
-                    ? 'selected'
-                    : ''
-                }
-              >
+              <option value="Alta">
                 Alta
               </option>
 
@@ -3800,12 +3461,7 @@ function abrirFormularioObjetivo(
             id="objetivoObservacao"
             rows="3"
             placeholder="Opcional"
-          >${
-            escapeHtml(
-              objetivoEditando?.observacao ||
-              ''
-            )
-          }</textarea>
+          ></textarea>
 
         </label>
 
@@ -3820,11 +3476,7 @@ function abrirFormularioObjetivo(
           type="submit"
           class="primary-action"
         >
-          ${
-            editando
-              ? 'Salvar alterações'
-              : 'Criar objetivo'
-          }
+          Criar objetivo
         </button>
 
       </form>
@@ -3867,14 +3519,15 @@ function abrirFormularioObjetivo(
     )
     ?.addEventListener(
       'submit',
-      event =>
-        salvarObjetivoFormulario(
-          event,
-          objetivoEditando
-        )
+      salvarObjetivoFormulario
     );
-
 }
+
+
+/* =====================================================
+   FECHAR MODAL
+   ===================================================== */
+
 function fecharModalObjetivo() {
 
   document
@@ -3890,12 +3543,10 @@ function fecharModalObjetivo() {
    ===================================================== */
 
 async function salvarObjetivoFormulario(
-  event,
-  objetivoEditando = null
+  event
 ) {
 
   event.preventDefault();
-
 
   const erro =
     document.getElementById(
@@ -3903,34 +3554,10 @@ async function salvarObjetivoFormulario(
     );
 
 
-  const form =
-    document.getElementById(
-      'formObjetivo'
-    );
-
-
-  const botao =
-    form?.querySelector(
-      'button[type="submit"]'
-    );
-
-
   try {
 
     if (erro) {
       erro.textContent = '';
-    }
-
-
-    if (botao) {
-
-      botao.disabled = true;
-
-      botao.textContent =
-        objetivoEditando
-          ? 'Salvando...'
-          : 'Criando...';
-
     }
 
 
@@ -3985,24 +3612,9 @@ async function salvarObjetivoFormulario(
             'objetivoObservacao'
           )
           .value
-          .trim(),
-
-      ativo:
-        true
+          .trim()
 
     };
-
-
-    if (objetivoEditando) {
-
-      dados.id =
-        objetivoEditando.id;
-
-      dados.dataCriacao =
-        objetivoEditando.dataCriacao ||
-        '';
-
-    }
 
 
     if (!dados.nome) {
@@ -4015,589 +3627,44 @@ async function salvarObjetivoFormulario(
 
 
     if (
-      !Number.isFinite(dados.meta) ||
+      !dados.meta ||
       dados.meta <= 0
     ) {
 
       throw new Error(
-        'Informe uma meta maior que zero.'
+        'Informe uma meta válida.'
       );
 
     }
-
-
-    if (
-      !Number.isFinite(
-        dados.valorInicial
-      ) ||
-      dados.valorInicial < 0
-    ) {
-
-      throw new Error(
-        'O valor inicial não pode ser negativo.'
-      );
-
-    }
-
-
-    await api(
-      'salvarObjetivo',
-      dados,
-      'POST'
-    );
-
-
-    fecharModalObjetivo();
 
 
     /*
-     * O dashboard já devolve objetivos atualizados.
+     * IMPORTANTE:
+     * Ainda não enviamos para a API.
+     *
+     * O próximo passo será conectar
+     * esta função à ação do Apps Script
+     * responsável por criar objetivos.
      */
-    await carregarDashboard(
-      true
+
+    throw new Error(
+      'A criação de objetivos será conectada ao servidor na próxima etapa.'
     );
-
-
-    renderPaginaObjetivos();
 
 
   } catch (error) {
 
     console.error(
-      'Objetivo:',
       error
     );
-
 
     if (erro) {
 
       erro.textContent =
-        error.message ||
-        'Não foi possível salvar o objetivo.';
-
-    }
-
-  } finally {
-
-    if (botao) {
-
-      botao.disabled = false;
-
-      botao.textContent =
-        objetivoEditando
-          ? 'Salvar alterações'
-          : 'Criar objetivo';
+        error.message;
 
     }
 
   }
 
-}
-
-
-/* =====================================================
-   APORTES
-   ===================================================== */
-
-function abrirModalAporte(
-  objetivoId
-) {
-
-  const objetivo =
-    state.objetivos.find(
-      item =>
-        String(item.id) ===
-        String(objetivoId)
-    );
-
-
-  if (!objetivo) {
-
-    alert(
-      'Objetivo não encontrado.'
-    );
-
-    return;
-
-  }
-
-
-  document
-    .getElementById(
-      'modalAporte'
-    )
-    ?.remove();
-
-
-  const hoje =
-    new Date()
-      .toISOString()
-      .split('T')[0];
-
-
-  const modal =
-    document.createElement(
-      'div'
-    );
-
-
-  modal.id =
-    'modalAporte';
-
-  modal.className =
-    'finance-modal';
-
-
-  modal.innerHTML = `
-
-    <div
-      class="finance-modal-backdrop"
-      id="aporteBackdrop"
-    ></div>
-
-
-    <div
-      class="finance-modal-card"
-    >
-
-      <header
-        class="finance-modal-header"
-      >
-
-        <div>
-
-          <p class="eyebrow">
-            ${escapeHtml(
-              objetivo.nome
-            )}
-          </p>
-
-          <h2>
-            Adicionar dinheiro
-          </h2>
-
-        </div>
-
-
-        <button
-          type="button"
-          class="modal-close"
-          id="fecharModalAporte"
-          aria-label="Fechar"
-        >
-          ×
-        </button>
-
-      </header>
-
-
-      <form
-        id="formAporte"
-      >
-
-        <label>
-
-          Valor
-
-          <input
-            id="aporteValor"
-            type="number"
-            min="0.01"
-            step="0.01"
-            placeholder="0,00"
-            required
-          >
-
-        </label>
-
-
-        <label>
-
-          Data
-
-          <input
-            id="aporteData"
-            type="date"
-            value="${hoje}"
-            required
-          >
-
-        </label>
-
-
-        <label>
-
-          Observação
-
-          <textarea
-            id="aporteObservacao"
-            rows="3"
-            placeholder="Opcional"
-          ></textarea>
-
-        </label>
-
-
-        <div
-          id="aporteErro"
-          class="form-error"
-        ></div>
-
-
-        <button
-          type="submit"
-          class="primary-action"
-        >
-          Adicionar dinheiro
-        </button>
-
-      </form>
-
-    </div>
-
-  `;
-
-
-  document
-    .getElementById('app')
-    ?.appendChild(
-      modal
-    );
-
-
-  document
-    .getElementById(
-      'fecharModalAporte'
-    )
-    ?.addEventListener(
-      'click',
-      fecharModalAporte
-    );
-
-
-  document
-    .getElementById(
-      'aporteBackdrop'
-    )
-    ?.addEventListener(
-      'click',
-      fecharModalAporte
-    );
-
-
-  document
-    .getElementById(
-      'formAporte'
-    )
-    ?.addEventListener(
-      'submit',
-      event =>
-        salvarAporte(
-          event,
-          objetivoId
-        )
-    );
-
-}
-
-
-async function salvarAporte(
-  event,
-  objetivoId
-) {
-
-  event.preventDefault();
-
-
-  const erro =
-    document.getElementById(
-      'aporteErro'
-    );
-
-
-  const botao =
-    document
-      .getElementById(
-        'formAporte'
-      )
-      ?.querySelector(
-        'button[type="submit"]'
-      );
-
-
-  try {
-
-    if (erro) {
-      erro.textContent = '';
-    }
-
-
-    if (botao) {
-
-      botao.disabled = true;
-
-      botao.textContent =
-        'Salvando...';
-
-    }
-
-
-    const valor =
-      Number(
-        document.getElementById(
-          'aporteValor'
-        ).value
-      );
-
-
-    const data =
-      document.getElementById(
-        'aporteData'
-      ).value;
-
-
-    const observacao =
-      document
-        .getElementById(
-          'aporteObservacao'
-        )
-        .value
-        .trim();
-
-
-    if (
-      !Number.isFinite(valor) ||
-      valor <= 0
-    ) {
-
-      throw new Error(
-        'Informe um valor maior que zero.'
-      );
-
-    }
-
-
-    await api(
-      'adicionarAporte',
-      {
-        objetivoId:
-          objetivoId,
-
-        valor:
-          valor,
-
-        data:
-          data,
-
-        observacao:
-          observacao
-      },
-      'POST'
-    );
-
-
-    fecharModalAporte();
-
-
-    await carregarDashboard(
-      true
-    );
-
-
-    renderPaginaObjetivos();
-
-
-  } catch (error) {
-
-    console.error(
-      'Aporte:',
-      error
-    );
-
-
-    if (erro) {
-
-      erro.textContent =
-        error.message ||
-        'Não foi possível adicionar o valor.';
-
-    }
-
-  } finally {
-
-    if (botao) {
-
-      botao.disabled = false;
-
-      botao.textContent =
-        'Adicionar dinheiro';
-
-    }
-
-  }
-
-}
-
-
-function fecharModalAporte() {
-
-  document
-    .getElementById(
-      'modalAporte'
-    )
-    ?.remove();
-
-}
-
-
-/* =====================================================
-   EDITAR OBJETIVO
-   ===================================================== */
-
-function editarObjetivo(
-  objetivoId
-) {
-
-  const objetivo =
-    state.objetivos.find(
-      item =>
-        String(item.id) ===
-        String(objetivoId)
-    );
-
-
-  if (!objetivo) {
-
-    alert(
-      'Objetivo não encontrado.'
-    );
-
-    return;
-
-  }
-
-
-  abrirFormularioObjetivo(
-    objetivo
-  );
-
-}
-
-
-/* =====================================================
-   EXCLUIR OBJETIVO
-   ===================================================== */
-
-async function excluirObjetivoDaPagina(
-  objetivoId
-) {
-
-  const objetivo =
-    state.objetivos.find(
-      item =>
-        String(item.id) ===
-        String(objetivoId)
-    );
-
-
-  const nome =
-    objetivo?.nome ||
-    'este objetivo';
-
-
-  const confirmado =
-    window.confirm(
-      `Excluir "${nome}"?\n\nEssa ação não pode ser desfeita.`
-    );
-
-
-  if (!confirmado) {
-    return;
-  }
-
-
-  try {
-
-    await api(
-      'excluirObjetivo',
-      {
-        id:
-          objetivoId
-      },
-      'POST'
-    );
-
-
-    await carregarDashboard(
-      true
-    );
-
-
-    renderPaginaObjetivos();
-
-
-  } catch (error) {
-
-    console.error(
-      'Excluir objetivo:',
-      error
-    );
-
-
-    alert(
-      error.message ||
-      'Não foi possível excluir o objetivo.'
-    );
-
-  }
-
-
-}
-
-
-/* =====================================================
-   INICIALIZAÇÃO DO APP
-   ===================================================== */
-
-let appInicializado = false;
-
-function iniciarAplicacao() {
-
-  if (appInicializado) {
-    return;
-  }
-
-  appInicializado = true;
-
-  if (
-    typeof configurarEventos ===
-    'function'
-  ) {
-
-    configurarEventos();
-  }
-
-  inicializarGoogle();
-
-  restaurarSessao();
-
-}
-
-
-if (
-  document.readyState ===
-  'loading'
-) {
-
-  document.addEventListener(
-    'DOMContentLoaded',
-    iniciarAplicacao,
-    {
-      once: true
-    }
-  );
-
-} else {
-
-  iniciarAplicacao();
 }
