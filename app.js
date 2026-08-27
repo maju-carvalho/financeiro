@@ -41,7 +41,18 @@ const state = {
 
   categorias: [],
 
-  recorrentes: []
+  recorrentes: [],
+
+  /*
+   * Cache da sessão.
+   * Evita chamadas repetidas ao servidor ao trocar de aba.
+   */
+  lancamentosCarregados: false,
+
+  lancamentosCarregando: null,
+
+  dashboardCarregado: false
+
 };
 
 
@@ -253,14 +264,14 @@ async function carregarAplicacao() {
 
   try {
 
-    mostrarCarregando(
-      true
-    );
+    mostrarCarregando(true);
+
 
     const data =
       await api(
         'getInitialData'
       );
+
 
     state.initialData =
       data;
@@ -284,18 +295,35 @@ async function carregarAplicacao() {
       data.recorrentes ||
       [];
 
-    /*
-     * Por padrão começa no espaço pessoal.
-     */
 
     state.escopo =
       state.user.nome;
 
+
     atualizarInterfaceUsuario();
 
-    await carregarDashboard();
+    atualizarMesAtual();
 
-    carregarLancamentos();
+
+    /*
+     * Primeira carga da sessão:
+     * dashboard + histórico de lançamentos.
+     */
+    await Promise.all([
+      carregarDashboard(true),
+      carregarLancamentos({}, true)
+    ]);
+
+
+    /*
+     * Só liberamos a aplicação depois que
+     * os dados reais chegaram.
+     */
+    document
+      .getElementById('app')
+      ?.classList
+      .remove('hidden');
+
 
   } catch (error) {
 
@@ -307,38 +335,49 @@ async function carregarAplicacao() {
       error.message
     );
 
-    /*
-     * Se o token estiver inválido,
-     * voltamos ao login.
-     */
 
     if (
-      error.message
-        .toLowerCase()
-        .includes('identificar')
+      String(
+        error.message || ''
+      )
+      .toLowerCase()
+      .includes('identificar')
     ) {
 
       logout();
+
     }
 
   } finally {
 
-    mostrarCarregando(
-      false
-    );
+    mostrarCarregando(false);
+
   }
+
 }
-
-
-/* =====================================================
-   DASHBOARD
-   ===================================================== */
-
-async function carregarDashboard() {
+async function carregarDashboard(
+  forcarAtualizacao = false
+) {
 
   if (!state.escopo) {
-    return;
+    return null;
   }
+
+
+  if (
+    state.dashboardCarregado &&
+    state.dashboard &&
+    !forcarAtualizacao
+  ) {
+
+    renderDashboard(
+      state.dashboard
+    );
+
+    return state.dashboard;
+
+  }
+
 
   try {
 
@@ -351,12 +390,20 @@ async function carregarDashboard() {
         }
       );
 
+
     state.dashboard =
       data;
+
+    state.dashboardCarregado =
+      true;
+
 
     renderDashboard(
       data
     );
+
+
+    return data;
 
   } catch (error) {
 
@@ -368,7 +415,47 @@ async function carregarDashboard() {
     mostrarErro(
       error.message
     );
+
+    return null;
+
   }
+
+}
+
+function atualizarMesAtual() {
+
+  const elemento =
+    document.getElementById(
+      'currentMonth'
+    );
+
+  if (!elemento) {
+    return;
+  }
+
+
+  const agora =
+    new Date();
+
+
+  let texto =
+    agora.toLocaleDateString(
+      'pt-BR',
+      {
+        month: 'long',
+        year: 'numeric'
+      }
+    );
+
+
+  texto =
+    texto.charAt(0).toUpperCase() +
+    texto.slice(1);
+
+
+  elemento.textContent =
+    texto;
+
 }
 
 
@@ -633,46 +720,102 @@ function renderUltimosLancamentos(
    ===================================================== */
 
 async function carregarLancamentos(
-  filtros = {}
+  filtros = {},
+  forcarAtualizacao = false
 ) {
 
-  try {
+  const possuiFiltros =
+    Object.keys(
+      filtros || {}
+    ).length > 0;
 
-    const data =
-      await api(
-        'listarLancamentos',
-        {
-          ...filtros,
-          escopo:
-            state.escopo
-        }
-      );
 
-    state.lancamentos =
-      data;
+  if (
+    state.lancamentosCarregados &&
+    !forcarAtualizacao &&
+    !possuiFiltros
+  ) {
 
-    return data;
+    return state.lancamentos;
 
-  } catch (error) {
-
-    console.error(
-      'Lançamentos:',
-      error
-    );
-
-    mostrarErro(
-      error.message
-    );
-
-    return [];
   }
+
+
+  if (
+    state.lancamentosCarregando &&
+    !forcarAtualizacao
+  ) {
+
+    return state.lancamentosCarregando;
+
+  }
+
+
+  const buscar =
+    async () => {
+
+      try {
+
+        const data =
+          await api(
+            'listarLancamentos',
+            {
+              ...filtros,
+              escopo:
+                state.escopo
+            }
+          );
+
+
+        const lista =
+          Array.isArray(data)
+            ? data
+            : [];
+
+
+        if (!possuiFiltros) {
+
+          state.lancamentos =
+            lista;
+
+          state.lancamentosCarregados =
+            true;
+
+        }
+
+
+        return lista;
+
+      } catch (error) {
+
+        console.error(
+          'Lançamentos:',
+          error
+        );
+
+        mostrarErro(
+          error.message
+        );
+
+        return [];
+
+      } finally {
+
+        state.lancamentosCarregando =
+          null;
+
+      }
+
+    };
+
+
+  state.lancamentosCarregando =
+    buscar();
+
+
+  return state.lancamentosCarregando;
+
 }
-
-
-/* =====================================================
-   USUÁRIO / ESCOPO
-   ===================================================== */
-
 function atualizarInterfaceUsuario() {
 
   if (!state.user) {
@@ -774,19 +917,57 @@ async function trocarEscopo(
     return;
   }
 
+
   state.escopo =
     escopo;
 
-  await carregarDashboard();
 
-  await carregarLancamentos();
+  state.lancamentos =
+    [];
+
+  state.lancamentosCarregados =
+    false;
+
+  state.lancamentosCarregando =
+    null;
+
+  state.dashboard =
+    null;
+
+  state.dashboardCarregado =
+    false;
+
+
+  await Promise.all([
+    carregarDashboard(true),
+    carregarLancamentos({}, true)
+  ]);
+
+
+  if (
+    objetivosPage &&
+    !objetivosPage.classList.contains(
+      'hidden'
+    )
+  ) {
+
+    renderPaginaObjetivos();
+
+  }
+
+
+  if (
+    lancamentosPage &&
+    !lancamentosPage.classList.contains(
+      'hidden'
+    )
+  ) {
+
+    await atualizarListaLancamentosPage();
+
+  }
+
 }
-
-
-/* =====================================================
-   TEMA
-   ===================================================== */
-
 function configurarTema() {
 
   const button =
@@ -872,6 +1053,11 @@ function showApp(
   user
 ) {
 
+  /*
+   * Esconde o login imediatamente,
+   * mas mantém o app principal oculto
+   * até os dados reais terminarem de carregar.
+   */
   document
     .getElementById(
       'loginScreen'
@@ -880,22 +1066,19 @@ function showApp(
       'hidden'
     );
 
+
   document
     .getElementById(
       'app'
     )
-    ?.classList.remove(
+    ?.classList.add(
       'hidden'
     );
 
+
   atualizarInterfaceUsuario();
+
 }
-
-
-/* =====================================================
-   GOOGLE INITIALIZATION
-   ===================================================== */
-
 function inicializarGoogle() {
 
   if (
@@ -1188,9 +1371,53 @@ function mostrarCarregando(
       'loading',
       ativo
     );
+
+
+  let overlay =
+    document.getElementById(
+      'financeLoading'
+    );
+
+
+  if (
+    ativo &&
+    !overlay
+  ) {
+
+    overlay =
+      document.createElement(
+        'div'
+      );
+
+    overlay.id =
+      'financeLoading';
+
+    overlay.innerHTML = `
+      <div class="finance-loading-card">
+        <div class="finance-spinner"></div>
+        <strong>Carregando seus dados</strong>
+        <small>Um momento...</small>
+      </div>
+    `;
+
+    document.body
+      .appendChild(
+        overlay
+      );
+
+  }
+
+
+  if (
+    !ativo &&
+    overlay
+  ) {
+
+    overlay.remove();
+
+  }
+
 }
-
-
 function mostrarErro(
   mensagem
 ) {
@@ -1223,42 +1450,96 @@ function configurarEventos() {
 
   configurarTema();
 
-  const logoutButton =
-    document.getElementById('logoutBtn');
 
-  if (logoutButton) {
-    logoutButton.addEventListener(
+  document
+    .getElementById('logoutBtn')
+    ?.addEventListener(
       'click',
       logout
     );
-  }
 
-  // =========================
-  // NOVO LANÇAMENTO
-  // =========================
 
+  /*
+   * Atalho flutuante.
+   */
   document
     .querySelector('.fab')
     ?.addEventListener(
       'click',
-      () => abrirPaginaLancamentos(true)
+      () =>
+        abrirPaginaLancamentos(
+          true
+        )
     );
 
+
+  /*
+   * "Novo lançamento".
+   */
   document
-    .querySelector('.quick-card')
+    .getElementById(
+      'quickNovoLancamento'
+    )
     ?.addEventListener(
       'click',
-      () => abrirPaginaLancamentos(true)
+      () =>
+        abrirPaginaLancamentos(
+          true
+        )
     );
 
-  // =========================
-  // NAVEGAÇÃO INFERIOR
-  // =========================
 
+  /*
+   * "Recorrentes" fica reservado
+   * para a próxima etapa.
+   */
+  document
+    .getElementById(
+      'quickRecorrentes'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        alert(
+          'A aba Recorrentes será conectada na próxima etapa.'
+        )
+    );
+
+
+  /*
+   * Ver todos.
+   */
+  document
+    .getElementById(
+      'verTodosObjetivosBtn'
+    )
+    ?.addEventListener(
+      'click',
+      abrirPaginaObjetivos
+    );
+
+
+  document
+    .getElementById(
+      'verTodosLancamentosBtn'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        abrirPaginaLancamentos(
+          false
+        )
+    );
+
+
+  /*
+   * Navegação inferior.
+   */
   const navButtons =
     document.querySelectorAll(
       '.bottom-nav button'
     );
+
 
   navButtons.forEach(
     (button, index) => {
@@ -1268,31 +1549,51 @@ function configurarEventos() {
         () => {
 
           if (index === 0) {
+
             voltarInicio();
+
             return;
+
           }
+
 
           if (index === 1) {
-            abrirPaginaLancamentos(false);
+
+            abrirPaginaLancamentos(
+              false
+            );
+
             return;
+
           }
 
-         if (index === 2) {
-  abrirPaginaObjetivos();
-  return;
-}
+
+          if (index === 2) {
+
+            abrirPaginaObjetivos();
+
+            return;
+
+          }
+
 
           if (index === 3) {
+
             alert(
               'A aba Relatórios será conectada na próxima etapa.'
             );
+
             return;
+
           }
 
+
           if (index === 4) {
+
             alert(
               'A aba Ajustes será conectada na próxima etapa.'
             );
+
           }
 
         }
@@ -1301,123 +1602,127 @@ function configurarEventos() {
     }
   );
 
-  // =========================
-  // SELETOR DE ESPAÇO
-  // =========================
 
   document
-    .getElementById('scopeSelect')
+    .getElementById(
+      'scopeSelect'
+    )
     ?.addEventListener(
       'change',
-      event => {
+      event =>
         trocarEscopo(
           event.target.value
-        );
-      }
+        )
     );
+
 }
-
-
-/* =====================================================
-   INICIALIZAÇÃO
-   ===================================================== */
-
-window.addEventListener(
-  'load',
-  () => {
-
-    configurarEventos();
-
-    inicializarGoogle();
-
-    /*
-     * Primeiro tenta restaurar
-     * uma sessão já existente.
-     */
-
-    restaurarSessao();
-  }
-);
-
-
-/* =====================================================
-   PÁGINA DE LANÇAMENTOS
-   ===================================================== */
-
-let lancamentosPage = null;
-
-
-/* =====================================================
-   ABRIR LANÇAMENTOS
-   ===================================================== */
-
 async function abrirPaginaLancamentos(
   abrirFormulario = false
 ) {
 
   criarPaginaLancamentos();
 
+
+  if (objetivosPage) {
+
+    objetivosPage
+      .classList
+      .add('hidden');
+
+  }
+
+
   document
     .querySelector('.app')
-    ?.classList.add('hidden');
+    ?.classList
+    .add('hidden');
+
+
+  lancamentosPage
+    .classList
+    .remove('hidden');
+
 
   document
     .querySelector('.bottom-nav')
-    ?.classList.add('lancamentos-open');
+    ?.classList
+    .remove('objetivos-open');
 
-  lancamentosPage.classList.remove(
-    'hidden'
-  );
+
+  document
+    .querySelector('.bottom-nav')
+    ?.classList
+    .add('lancamentos-open');
+
 
   marcarNavAtiva(1);
 
+
+  /*
+   * Só consulta o servidor se ainda não
+   * houver dados nesta sessão.
+   */
   await atualizarListaLancamentosPage();
 
+
   if (abrirFormulario) {
+
     abrirFormularioLancamento();
+
   }
+
 }
-
-
-/* =====================================================
-   VOLTAR PARA INÍCIO
-   ===================================================== */
-
 function voltarInicio() {
 
   if (lancamentosPage) {
-    lancamentosPage.classList.add(
-      'hidden'
-    );
+
+    lancamentosPage
+      .classList
+      .add('hidden');
+
   }
 
+
   if (objetivosPage) {
-    objetivosPage.classList.add(
-      'hidden'
-    );
+
+    objetivosPage
+      .classList
+      .add('hidden');
+
   }
+
 
   document
     .querySelector('.app')
-    ?.classList.remove('hidden');
+    ?.classList
+    .remove('hidden');
+
 
   document
     .querySelector('.bottom-nav')
-    ?.classList.remove(
+    ?.classList
+    .remove(
       'lancamentos-open',
       'objetivos-open'
     );
 
+
   marcarNavAtiva(0);
 
-  carregarDashboard();
+
+  /*
+   * Renderiza o dashboard já carregado.
+   * Não faz nova chamada só por voltar à aba Início.
+   */
+  if (state.dashboard) {
+
+    renderDashboard(
+      state.dashboard
+    );
+
+  }
+
 }
-
-
-/* =====================================================
-   CRIA A PÁGINA
-   ===================================================== */
-
 function criarPaginaLancamentos() {
 
   if (lancamentosPage) {
@@ -2836,26 +3141,49 @@ async function abrirPaginaObjetivos() {
 
   criarPaginaObjetivos();
 
+
+  if (lancamentosPage) {
+
+    lancamentosPage
+      .classList
+      .add('hidden');
+
+  }
+
+
   document
     .querySelector('.app')
-    ?.classList.add('hidden');
+    ?.classList
+    .add('hidden');
+
+
+  objetivosPage
+    .classList
+    .remove('hidden');
+
 
   document
     .querySelector('.bottom-nav')
-    ?.classList.add('objetivos-open');
+    ?.classList
+    .remove('lancamentos-open');
 
-  objetivosPage.classList.remove('hidden');
+
+  document
+    .querySelector('.bottom-nav')
+    ?.classList
+    .add('objetivos-open');
+
 
   marcarNavAtiva(2);
 
+
+  /*
+   * Os objetivos já vêm no dashboard inicial.
+   * Portanto, trocar de aba não faz outra requisição.
+   */
   renderPaginaObjetivos();
+
 }
-
-
-/* =====================================================
-   CRIAR PÁGINA
-   ===================================================== */
-
 function criarPaginaObjetivos() {
 
   if (objetivosPage) {
@@ -3203,26 +3531,26 @@ function renderPaginaObjetivos() {
    NOVO OBJETIVO
    ===================================================== */
 
-function abrirFormularioObjetivo() {
+function abrirFormularioObjetivo(
+  objetivoEditando = null
+) {
 
-  const existente =
-    document.getElementById(
+  document
+    .getElementById(
       'modalObjetivo'
-    );
-
-  if (existente) {
-    existente.remove();
-  }
-
-
-  const hoje =
-    new Date()
-      .toISOString()
-      .split('T')[0];
+    )
+    ?.remove();
 
 
   const modal =
-    document.createElement('div');
+    document.createElement(
+      'div'
+    );
+
+
+  const editando =
+    !!objetivoEditando;
+
 
   modal.id =
     'modalObjetivo';
@@ -3250,19 +3578,29 @@ function abrirFormularioObjetivo() {
         <div>
 
           <p class="eyebrow">
-            NOVO OBJETIVO
+            ${
+              editando
+                ? 'EDITAR OBJETIVO'
+                : 'NOVO OBJETIVO'
+            }
           </p>
 
           <h2>
-            Criar objetivo
+            ${
+              editando
+                ? 'Editar objetivo'
+                : 'Criar objetivo'
+            }
           </h2>
 
         </div>
 
 
         <button
+          type="button"
           class="modal-close"
           id="fecharModalObjetivo"
+          aria-label="Fechar"
         >
           ×
         </button>
@@ -3282,6 +3620,12 @@ function abrirFormularioObjetivo() {
             id="objetivoNome"
             type="text"
             placeholder="Ex.: Viagem"
+            value="${
+              escapeAttribute(
+                objetivoEditando?.nome ||
+                ''
+              )
+            }"
             required
           >
 
@@ -3302,6 +3646,10 @@ function abrirFormularioObjetivo() {
               min="0.01"
               step="0.01"
               placeholder="0,00"
+              value="${
+                objetivoEditando?.meta ??
+                ''
+              }"
               required
             >
 
@@ -3317,7 +3665,10 @@ function abrirFormularioObjetivo() {
               type="number"
               min="0"
               step="0.01"
-              value="0"
+              value="${
+                objetivoEditando?.valorInicial ??
+                0
+              }"
             >
 
           </label>
@@ -3336,6 +3687,10 @@ function abrirFormularioObjetivo() {
             <input
               id="objetivoPrazo"
               type="date"
+              value="${
+                objetivoEditando?.prazo ||
+                ''
+              }"
             >
 
           </label>
@@ -3349,18 +3704,42 @@ function abrirFormularioObjetivo() {
               id="objetivoPrioridade"
             >
 
-              <option value="Baixa">
+              <option
+                value="Baixa"
+                ${
+                  objetivoEditando?.prioridade ===
+                  'Baixa'
+                    ? 'selected'
+                    : ''
+                }
+              >
                 Baixa
               </option>
 
+
               <option
                 value="Média"
-                selected
+                ${
+                  !objetivoEditando ||
+                  objetivoEditando.prioridade ===
+                  'Média'
+                    ? 'selected'
+                    : ''
+                }
               >
                 Média
               </option>
 
-              <option value="Alta">
+
+              <option
+                value="Alta"
+                ${
+                  objetivoEditando?.prioridade ===
+                  'Alta'
+                    ? 'selected'
+                    : ''
+                }
+              >
                 Alta
               </option>
 
@@ -3379,7 +3758,12 @@ function abrirFormularioObjetivo() {
             id="objetivoObservacao"
             rows="3"
             placeholder="Opcional"
-          ></textarea>
+          >${
+            escapeHtml(
+              objetivoEditando?.observacao ||
+              ''
+            )
+          }</textarea>
 
         </label>
 
@@ -3394,7 +3778,11 @@ function abrirFormularioObjetivo() {
           type="submit"
           class="primary-action"
         >
-          Criar objetivo
+          ${
+            editando
+              ? 'Salvar alterações'
+              : 'Criar objetivo'
+          }
         </button>
 
       </form>
@@ -3437,15 +3825,14 @@ function abrirFormularioObjetivo() {
     )
     ?.addEventListener(
       'submit',
-      salvarObjetivoFormulario
+      event =>
+        salvarObjetivoFormulario(
+          event,
+          objetivoEditando
+        )
     );
+
 }
-
-
-/* =====================================================
-   FECHAR MODAL
-   ===================================================== */
-
 function fecharModalObjetivo() {
 
   document
@@ -3461,938 +3848,24 @@ function fecharModalObjetivo() {
    ===================================================== */
 
 async function salvarObjetivoFormulario(
-  event
+  event,
+  objetivoEditando = null
 ) {
 
   event.preventDefault();
+
 
   const erro =
     document.getElementById(
       'objetivoFormErro'
     );
 
-
-  try {
-
-    if (erro) {
-      erro.textContent = '';
-    }
-
-
-    const dados = {
-
-      escopo:
-        state.escopo,
-
-      nome:
-        document
-          .getElementById(
-            'objetivoNome'
-          )
-          .value
-          .trim(),
-
-      meta:
-        Number(
-          document
-            .getElementById(
-              'objetivoMeta'
-            )
-            .value
-        ),
-
-      valorInicial:
-        Number(
-          document
-            .getElementById(
-              'objetivoValorInicial'
-            )
-            .value || 0
-        ),
-
-      prazo:
-        document
-          .getElementById(
-            'objetivoPrazo'
-          )
-          .value,
-
-      prioridade:
-        document
-          .getElementById(
-            'objetivoPrioridade'
-          )
-          .value,
-
-      observacao:
-        document
-          .getElementById(
-            'objetivoObservacao'
-          )
-          .value
-          .trim()
-
-    };
-
-
-    if (!dados.nome) {
-
-      throw new Error(
-        'Informe o nome do objetivo.'
-      );
-
-    }
-
-
-    if (
-      !dados.meta ||
-      dados.meta <= 0
-    ) {
-
-      throw new Error(
-        'Informe uma meta válida.'
-      );
-
-    }
-
-
-    /*
-     * IMPORTANTE:
-     * Ainda não enviamos para a API.
-     *
-     * O próximo passo será conectar
-     * esta função à ação do Apps Script
-     * responsável por criar objetivos.
-     */
-
-    throw new Error(
-      'A criação de objetivos será conectada ao servidor na próxima etapa.'
-    );
-
-
-  } catch (error) {
-
-    console.error(
-      error
-    );
-
-    if (erro) {
-
-      erro.textContent =
-        error.message;
-
-    }
-
-  }
-
-}
-
-/* =====================================================
-   CORREÇÃO DEFINITIVA DA NAVEGAÇÃO ENTRE PÁGINAS
-   COLE ESTE BLOCO NO FINAL DO APP.JS
-   ===================================================== */
-
-
-/* Garante que elementos com a classe hidden
-   realmente fiquem escondidos. */
-(function garantirHidden() {
-
-  const style =
-    document.createElement('style');
-
-  style.id =
-    'correcaoNavegacaoFinanceiro';
-
-  style.textContent = `
-    .hidden {
-      display: none !important;
-    }
-
-    .finance-page.hidden {
-      display: none !important;
-    }
-
-    .app.hidden {
-      display: none !important;
-    }
-  `;
-
-  if (
-    !document.getElementById(
-      'correcaoNavegacaoFinanceiro'
-    )
-  ) {
-
-    document
-      .head
-      .appendChild(style);
-
-  }
-
-})();
-
-
-/* =====================================================
-   ABRIR LANÇAMENTOS
-   ===================================================== */
-
-async function abrirPaginaLancamentos(
-  abrirFormulario = false
-) {
-
-  criarPaginaLancamentos();
-
-
-  /* Esconde a página de objetivos */
-  if (objetivosPage) {
-
-    objetivosPage
-      .classList
-      .add('hidden');
-
-  }
-
-
-  /* Esconde a página inicial */
-  document
-    .querySelector('.app')
-    ?.classList
-    .add('hidden');
-
-
-  /* Mostra somente lançamentos */
-  if (lancamentosPage) {
-
-    lancamentosPage
-      .classList
-      .remove('hidden');
-
-  }
-
-
-  /* Ajusta a navegação */
-  document
-    .querySelector('.bottom-nav')
-    ?.classList
-    .remove(
-      'objetivos-open'
-    );
-
-  document
-    .querySelector('.bottom-nav')
-    ?.classList
-    .add(
-      'lancamentos-open'
-    );
-
-
-  marcarNavAtiva(1);
-
-
-  await atualizarListaLancamentosPage();
-
-
-  if (abrirFormulario) {
-
-    abrirFormularioLancamento();
-
-  }
-
-}
-
-
-/* =====================================================
-   ABRIR OBJETIVOS
-   ===================================================== */
-
-async function abrirPaginaObjetivos() {
-
-  criarPaginaObjetivos();
-
-
-  /* Esconde completamente lançamentos */
-  if (lancamentosPage) {
-
-    lancamentosPage
-      .classList
-      .add('hidden');
-
-  }
-
-
-  /* Esconde a página inicial */
-  document
-    .querySelector('.app')
-    ?.classList
-    .add('hidden');
-
-
-  /* Mostra somente objetivos */
-  if (objetivosPage) {
-
-    objetivosPage
-      .classList
-      .remove('hidden');
-
-  }
-
-
-  /* Ajusta a navegação */
-  document
-    .querySelector('.bottom-nav')
-    ?.classList
-    .remove(
-      'lancamentos-open'
-    );
-
-  document
-    .querySelector('.bottom-nav')
-    ?.classList
-    .add(
-      'objetivos-open'
-    );
-
-
-  marcarNavAtiva(2);
-
-
-  renderPaginaObjetivos();
-
-}
-
-
-/* =====================================================
-   VOLTAR PARA O INÍCIO
-   ===================================================== */
-
-function voltarInicio() {
-
-
-  /* Esconde lançamentos */
-  if (lancamentosPage) {
-
-    lancamentosPage
-      .classList
-      .add('hidden');
-
-  }
-
-
-  /* Esconde objetivos */
-  if (objetivosPage) {
-
-    objetivosPage
-      .classList
-      .add('hidden');
-
-  }
-
-
-  /* Mostra a página inicial */
-  document
-    .querySelector('.app')
-    ?.classList
-    .remove('hidden');
-
-
-  /* Limpa as classes de navegação */
-  document
-    .querySelector('.bottom-nav')
-    ?.classList
-    .remove(
-      'lancamentos-open',
-      'objetivos-open'
-    );
-
-
-  marcarNavAtiva(0);
-
-
-  carregarDashboard();
-
-}
-
-
-/* =====================================================
-   CORREÇÃO DOS BOTÕES DA NAVEGAÇÃO
-   ===================================================== */
-
-function configurarNavegacaoFinanceiro() {
-
-  const buttons =
-    document.querySelectorAll(
-      '.bottom-nav button'
-    );
-
-
-  buttons.forEach(
-    (button, index) => {
-
-      /* Remove listeners antigos
-         clonando o botão */
-
-      const novoBotao =
-        button.cloneNode(true);
-
-
-      button
-        .parentNode
-        ?.replaceChild(
-          novoBotao,
-          button
-        );
-
-
-      novoBotao.addEventListener(
-        'click',
-        () => {
-
-
-          /* INÍCIO */
-
-          if (index === 0) {
-
-            voltarInicio();
-
-            return;
-
-          }
-
-
-          /* LANÇAMENTOS */
-
-          if (index === 1) {
-
-            abrirPaginaLancamentos(false);
-
-            return;
-
-          }
-
-
-          /* OBJETIVOS */
-
-          if (index === 2) {
-
-            abrirPaginaObjetivos();
-
-            return;
-
-          }
-
-
-          /* RELATÓRIOS */
-
-          if (index === 3) {
-
-            alert(
-              'A aba Relatórios será conectada na próxima etapa.'
-            );
-
-            return;
-
-          }
-
-
-          /* AJUSTES */
-
-          if (index === 4) {
-
-            alert(
-              'A aba Ajustes será conectada na próxima etapa.'
-            );
-
-          }
-
-        }
-      );
-
-    }
-  );
-
-}
-
-
-/* Configura novamente a navegação
-   depois que a página terminar de carregar */
-
-window.addEventListener(
-  'load',
-  () => {
-
-    setTimeout(
-      configurarNavegacaoFinanceiro,
-      300
-    );
-
-  }
-);
-
-/* =====================================================
-   CACHE DE LANÇAMENTOS - CORREÇÃO
-   COLE TODO ESTE BLOCO NO FINAL DO APP.JS
-   ===================================================== */
-
-
-/* -----------------------------------------------------
-   CONTROLE DO CACHE
-   ----------------------------------------------------- */
-
-state.lancamentosCarregados = false;
-
-state.lancamentosCarregando = null;
-
-
-/* -----------------------------------------------------
-   NOVA FUNÇÃO DE CARREGAMENTO
-   ----------------------------------------------------- */
-
-async function carregarLancamentos(
-  filtros = {},
-  forcarAtualizacao = false
-) {
-
-  /*
-   * Se os lançamentos já foram carregados
-   * nesta sessão e não precisamos atualizar,
-   * devolvemos os dados guardados na memória.
-   */
-  if (
-    state.lancamentosCarregados &&
-    !forcarAtualizacao &&
-    Object.keys(filtros).length === 0
-  ) {
-
-    return state.lancamentos;
-
-  }
-
-
-  /*
-   * Evita fazer duas requisições ao mesmo tempo.
-   *
-   * Se uma requisição já estiver acontecendo,
-   * aguardamos ela terminar.
-   */
-  if (
-    state.lancamentosCarregando &&
-    !forcarAtualizacao
-  ) {
-
-    return state.lancamentosCarregando;
-
-  }
-
-
-  const buscarDados = async () => {
-
-    try {
-
-      const data =
-        await api(
-          'listarLancamentos',
-          {
-            ...filtros,
-
-            escopo:
-              state.escopo
-          }
-        );
-
-
-      /*
-       * Garante que temos sempre um array.
-       */
-      const lista =
-        Array.isArray(data)
-          ? data
-          : [];
-
-
-      /*
-       * Só atualizamos o cache principal
-       * quando a busca foi feita sem filtros.
-       */
-      if (
-        Object.keys(filtros).length === 0
-      ) {
-
-        state.lancamentos =
-          lista;
-
-        state.lancamentosCarregados =
-          true;
-
-      }
-
-
-      return lista;
-
-    } catch (error) {
-
-      console.error(
-        'Lançamentos:',
-        error
-      );
-
-      mostrarErro(
-        error.message
-      );
-
-      return [];
-
-    } finally {
-
-      state.lancamentosCarregando =
-        null;
-
-    }
-
-  };
-
-
-  state.lancamentosCarregando =
-    buscarDados();
-
-
-  return state.lancamentosCarregando;
-
-}
-
-
-/* -----------------------------------------------------
-   ATUALIZA A LISTA USANDO O CACHE
-   ----------------------------------------------------- */
-
-async function atualizarListaLancamentosPage() {
-
-  const lista =
-    document.getElementById(
-      'listaLancamentosPage'
-    );
-
-
-  if (!lista) {
-    return;
-  }
-
-
-  /*
-   * Só mostra carregamento e busca os dados
-   * se eles ainda não foram carregados.
-   */
-  if (!state.lancamentosCarregados) {
-
-    lista.innerHTML = `
-      <div class="launch-loading">
-        Carregando lançamentos...
-      </div>
-    `;
-
-    await carregarLancamentos();
-
-  }
-
-
-  /*
-   * Agora usamos sempre os dados guardados
-   * na memória.
-   */
-  let dados =
-    Array.isArray(
-      state.lancamentos
-    )
-      ? [...state.lancamentos]
-      : [];
-
-
-  const mes =
-    document.getElementById(
-      'filtroMesLancamentos'
-    )?.value ||
-    'TODOS';
-
-
-  const tipo =
-    document.getElementById(
-      'filtroTipoLancamentos'
-    )?.value ||
-    '';
-
-
-  const categoria =
-    document.getElementById(
-      'filtroCategoriaLancamentos'
-    )?.value ||
-    '';
-
-
-  const busca =
-    (
-      document.getElementById(
-        'buscaLancamentos'
-      )?.value ||
-      ''
-    )
-      .trim()
-      .toLowerCase();
-
-
-  /* -------------------------------
-     FILTRO DE MÊS
-     ------------------------------- */
-
-  if (
-    mes !== 'TODOS'
-  ) {
-
-    dados =
-      dados.filter(
-        item =>
-          String(
-            item.data || ''
-          ).startsWith(
-            mes
-          )
-      );
-
-  }
-
-
-  /* -------------------------------
-     FILTRO DE TIPO
-     ------------------------------- */
-
-  if (tipo) {
-
-    dados =
-      dados.filter(
-        item =>
-          item.tipo === tipo
-      );
-
-  }
-
-
-  /* -------------------------------
-     FILTRO DE CATEGORIA
-     ------------------------------- */
-
-  if (categoria) {
-
-    dados =
-      dados.filter(
-        item =>
-          item.categoria ===
-          categoria
-      );
-
-  }
-
-
-  /* -------------------------------
-     BUSCA
-     ------------------------------- */
-
-  if (busca) {
-
-    dados =
-      dados.filter(
-        item => {
-
-          const texto =
-            [
-              item.descricao,
-              item.categoria,
-              item.conta
-            ]
-              .filter(Boolean)
-              .join(' ')
-              .toLowerCase();
-
-
-          return texto.includes(
-            busca
-          );
-
-        }
-      );
-
-  }
-
-
-  /*
-   * Renderiza sem fazer nova requisição.
-   */
-  renderPaginaLancamentos(
-    dados
-  );
-
-}
-
-
-/* -----------------------------------------------------
-   ABRIR LANÇAMENTOS
-   ----------------------------------------------------- */
-
-async function abrirPaginaLancamentos(
-  abrirFormulario = false
-) {
-
-  criarPaginaLancamentos();
-
-
-  /*
-   * Esconde Objetivos.
-   */
-  if (objetivosPage) {
-
-    objetivosPage
-      .classList
-      .add('hidden');
-
-  }
-
-
-  /*
-   * Esconde a página inicial.
-   */
-  document
-    .querySelector('.app')
-    ?.classList
-    .add('hidden');
-
-
-  /*
-   * Mostra Lançamentos.
-   */
-  if (lancamentosPage) {
-
-    lancamentosPage
-      .classList
-      .remove('hidden');
-
-  }
-
-
-  /*
-   * Ajusta a navegação.
-   */
-  document
-    .querySelector('.bottom-nav')
-    ?.classList
-    .remove('objetivos-open');
-
-
-  document
-    .querySelector('.bottom-nav')
-    ?.classList
-    .add('lancamentos-open');
-
-
-  marcarNavAtiva(1);
-
-
-  /*
-   * Aqui está a principal mudança:
-   *
-   * Se já carregou uma vez,
-   * apenas mostra os dados imediatamente.
-   *
-   * Não faz nova chamada à API.
-   */
-  await atualizarListaLancamentosPage();
-
-
-  if (abrirFormulario) {
-
-    abrirFormularioLancamento();
-
-  }
-
-}
-
-
-/* -----------------------------------------------------
-   INVALIDAR CACHE QUANDO NECESSÁRIO
-   ----------------------------------------------------- */
-
-function invalidarCacheLancamentos() {
-
-  state.lancamentos = [];
-
-  state.lancamentosCarregados =
-    false;
-
-  state.lancamentosCarregando =
-    null;
-
-}
-
-
-/* -----------------------------------------------------
-   TROCA DE ESCOPO
-   ----------------------------------------------------- */
-
-async function trocarEscopo(
-  escopo
-) {
-
-  if (!escopo) {
-    return;
-  }
-
-
-  /*
-   * Se o usuário mudou de escopo,
-   * os lançamentos antigos não podem
-   * continuar no cache.
-   */
-  state.escopo =
-    escopo;
-
-
-  invalidarCacheLancamentos();
-
-
-  await carregarDashboard();
-
-
-  /*
-   * Carrega os lançamentos do novo escopo
-   * uma única vez.
-   */
-  await carregarLancamentos(
-    {},
-    true
-  );
-
-}
-/* =====================================================
-   OBJETIVOS — VERSÃO FUNCIONAL
-   Cole este bloco no FINAL do app.js
-   ===================================================== */
-
-
-/* =====================================================
-   SALVAR OBJETIVO
-   ===================================================== */
-
-async function salvarObjetivoFormulario(
-  event
-) {
-
-  event.preventDefault();
-
-  const erro =
-    document.getElementById(
-      'objetivoFormErro'
-    );
 
   const form =
     document.getElementById(
       'formObjetivo'
     );
+
 
   const botao =
     form?.querySelector(
@@ -4412,7 +3885,9 @@ async function salvarObjetivoFormulario(
       botao.disabled = true;
 
       botao.textContent =
-        'Salvando...';
+        objetivoEditando
+          ? 'Salvando...'
+          : 'Criando...';
 
     }
 
@@ -4476,6 +3951,18 @@ async function salvarObjetivoFormulario(
     };
 
 
+    if (objetivoEditando) {
+
+      dados.id =
+        objetivoEditando.id;
+
+      dados.dataCriacao =
+        objetivoEditando.dataCriacao ||
+        '';
+
+    }
+
+
     if (!dados.nome) {
 
       throw new Error(
@@ -4486,7 +3973,7 @@ async function salvarObjetivoFormulario(
 
 
     if (
-      !dados.meta ||
+      !Number.isFinite(dados.meta) ||
       dados.meta <= 0
     ) {
 
@@ -4498,6 +3985,9 @@ async function salvarObjetivoFormulario(
 
 
     if (
+      !Number.isFinite(
+        dados.valorInicial
+      ) ||
       dados.valorInicial < 0
     ) {
 
@@ -4508,81 +3998,31 @@ async function salvarObjetivoFormulario(
     }
 
 
-    /*
-     * Envia para o Apps Script.
-     *
-     * A API já possui a ação
-     * "salvarObjetivo".
-     */
-    const resposta =
-      await api(
-        'salvarObjetivo',
-        dados,
-        'POST'
-      );
+    await api(
+      'salvarObjetivo',
+      dados,
+      'POST'
+    );
 
 
-    if (
-      !resposta ||
-      resposta.ok === false
-    ) {
-
-      throw new Error(
-        resposta?.erro ||
-        'Não foi possível criar o objetivo.'
-      );
-
-    }
-
-
-    /*
-     * Fecha o modal.
-     */
     fecharModalObjetivo();
 
 
     /*
-     * Atualiza os objetivos diretamente
-     * do servidor para refletir o novo dado.
+     * O dashboard já devolve objetivos atualizados.
      */
-    const objetivosAtualizados =
-      await api(
-        'listarObjetivos'
-      );
+    await carregarDashboard(
+      true
+    );
 
 
-    state.objetivos =
-      Array.isArray(
-        objetivosAtualizados
-      )
-        ? objetivosAtualizados
-        : [];
-
-
-    /*
-     * Mantém o dashboard sincronizado.
-     */
-    state.dashboard =
-      null;
-
-
-    /*
-     * Se a página de objetivos estiver aberta,
-     * redesenha imediatamente.
-     */
     renderPaginaObjetivos();
-
-
-    /*
-     * Atualiza a tela inicial também.
-     */
-    await carregarDashboard();
 
 
   } catch (error) {
 
     console.error(
-      'Salvar objetivo:',
+      'Objetivo:',
       error
     );
 
@@ -4591,7 +4031,7 @@ async function salvarObjetivoFormulario(
 
       erro.textContent =
         error.message ||
-        'Erro ao salvar objetivo.';
+        'Não foi possível salvar o objetivo.';
 
     }
 
@@ -4602,379 +4042,19 @@ async function salvarObjetivoFormulario(
       botao.disabled = false;
 
       botao.textContent =
-        'Criar objetivo';
+        objetivoEditando
+          ? 'Salvar alterações'
+          : 'Criar objetivo';
 
     }
 
   }
-}
-
-
-/* =====================================================
-   RENDER OBJETIVOS
-   ===================================================== */
-
-function renderPaginaObjetivos() {
-
-  const lista =
-    document.getElementById(
-      'listaObjetivosPage'
-    );
-
-  const resumo =
-    document.getElementById(
-      'objetivosResumo'
-    );
-
-  if (!lista) {
-    return;
-  }
-
-
-  const objetivos =
-    Array.isArray(
-      state.objetivos
-    )
-      ? state.objetivos
-      : [];
-
-
-  if (resumo) {
-
-    resumo.textContent =
-      objetivos.length === 1
-        ? '1 objetivo'
-        : `${objetivos.length} objetivos`;
-
-  }
-
-
-  if (!objetivos.length) {
-
-    lista.innerHTML = `
-
-      <div class="launch-empty">
-
-        <span>
-          🎯
-        </span>
-
-        <strong>
-          Nenhum objetivo encontrado
-        </strong>
-
-        <small>
-          Crie seu primeiro objetivo financeiro.
-        </small>
-
-        <button
-          class="primary-action"
-          onclick="abrirFormularioObjetivo()"
-        >
-          Novo objetivo
-        </button>
-
-      </div>
-
-    `;
-
-    return;
-  }
-
-
-  lista.innerHTML =
-    objetivos
-      .map(
-        objetivo => {
-
-          const meta =
-            Number(
-              objetivo.meta || 0
-            );
-
-
-          const guardado =
-            Number(
-              objetivo.guardado ||
-              objetivo.valorInicial ||
-              0
-            );
-
-
-          const falta =
-            Math.max(
-              meta -
-              guardado,
-              0
-            );
-
-
-          const percentual =
-            Math.max(
-              0,
-              Math.min(
-                100,
-                Number(
-                  objetivo.percentual ||
-                  (
-                    meta > 0
-                      ? (
-                          guardado /
-                          meta
-                        ) *
-                        100
-                      : 0
-                  )
-                )
-              )
-            );
-
-
-          const prioridade =
-            objetivo.prioridade ||
-            'Média';
-
-
-          const prazo =
-            objetivo.prazo
-              ? formatDate(
-                  objetivo.prazo
-                )
-              : 'Sem prazo';
-
-
-          const concluido =
-            percentual >= 100;
-
-
-          return `
-
-            <article
-              class="objective-card"
-            >
-
-              <div
-                class="objective-card-top"
-              >
-
-                <div
-                  class="objective-title"
-                >
-
-                  <span
-                    class="objective-icon"
-                  >
-                    🎯
-                  </span>
-
-
-                  <div>
-
-                    <strong>
-                      ${escapeHtml(
-                        objetivo.nome ||
-                        'Objetivo'
-                      )}
-                    </strong>
-
-                    <small>
-                      Prioridade:
-                      ${escapeHtml(
-                        prioridade
-                      )}
-                    </small>
-
-                  </div>
-
-                </div>
-
-
-                <b
-                  class="objective-percent"
-                >
-                  ${Math.round(
-                    percentual
-                  )}%
-                </b>
-
-              </div>
-
-
-              <div
-                class="objective-progress"
-              >
-
-                <i
-                  style="
-                    width:${percentual}%
-                  "
-                ></i>
-
-              </div>
-
-
-              <div
-                class="objective-values"
-              >
-
-                <span>
-                  ${formatMoney(
-                    guardado
-                  )}
-                </span>
-
-                <span>
-                  de
-                  ${formatMoney(
-                    meta
-                  )}
-                </span>
-
-              </div>
-
-
-              <div
-                class="objective-detail"
-              >
-
-                <span>
-                  Falta:
-                  <b>
-                    ${formatMoney(
-                      falta
-                    )}
-                  </b>
-                </span>
-
-                <span>
-                  📅 ${prazo}
-                </span>
-
-              </div>
-
-
-              <div
-                class="objective-status-row"
-              >
-
-                <span
-                  class="${
-                    concluido
-                      ? 'objective-complete'
-                      : 'objective-active'
-                  }"
-                >
-                  ${
-                    concluido
-                      ? '✓ Concluído'
-                      : '● Em andamento'
-                  }
-                </span>
-
-              </div>
-
-
-              <div
-                class="objective-actions-row"
-              >
-
-                ${
-                  !concluido
-                    ? `
-                      <button
-                        class="objective-secondary-btn"
-                        data-action="aporte"
-                        data-id="${
-                          escapeAttribute(
-                            objetivo.id
-                          )
-                        }"
-                      >
-                        💰 Adicionar dinheiro
-                      </button>
-                    `
-                    : ''
-                }
-
-
-                <button
-                  class="objective-delete-btn"
-                  data-action="excluir"
-                  data-id="${
-                    escapeAttribute(
-                      objetivo.id
-                    )
-                  }"
-                  aria-label="Excluir objetivo"
-                >
-                  🗑️
-                </button>
-
-              </div>
-
-            </article>
-
-          `;
-
-        }
-      )
-      .join('');
-
-
-  /*
-   * Botões de aporte
-   */
-  lista
-    .querySelectorAll(
-      '[data-action="aporte"]'
-    )
-    .forEach(
-      button => {
-
-        button.addEventListener(
-          'click',
-          () => {
-
-            abrirModalAporte(
-              button.dataset.id
-            );
-
-          }
-        );
-
-      }
-    );
-
-
-  /*
-   * Botões de exclusão
-   */
-  lista
-    .querySelectorAll(
-      '[data-action="excluir"]'
-    )
-    .forEach(
-      button => {
-
-        button.addEventListener(
-          'click',
-          () => {
-
-            excluirObjetivoDaPagina(
-              button.dataset.id
-            );
-
-          }
-        );
-
-      }
-    );
 
 }
 
 
 /* =====================================================
-   ADICIONAR DINHEIRO AO OBJETIVO
+   APORTES
    ===================================================== */
 
 function abrirModalAporte(
@@ -5000,15 +4080,17 @@ function abrirModalAporte(
   }
 
 
-  const modalExistente =
-    document.getElementById(
+  document
+    .getElementById(
       'modalAporte'
-    );
+    )
+    ?.remove();
 
 
-  if (modalExistente) {
-    modalExistente.remove();
-  }
+  const hoje =
+    new Date()
+      .toISOString()
+      .split('T')[0];
 
 
   const modal =
@@ -5056,8 +4138,10 @@ function abrirModalAporte(
 
 
         <button
+          type="button"
           class="modal-close"
           id="fecharModalAporte"
+          aria-label="Fechar"
         >
           ×
         </button>
@@ -5080,7 +4164,6 @@ function abrirModalAporte(
             step="0.01"
             placeholder="0,00"
             required
-            autofocus
           >
 
         </label>
@@ -5093,11 +4176,7 @@ function abrirModalAporte(
           <input
             id="aporteData"
             type="date"
-            value="${
-              new Date()
-                .toISOString()
-                .split('T')[0]
-            }"
+            value="${hoje}"
             required
           >
 
@@ -5180,10 +4259,6 @@ function abrirModalAporte(
 }
 
 
-/* =====================================================
-   SALVAR APORTE
-   ===================================================== */
-
 async function salvarAporte(
   event,
   objetivoId
@@ -5240,13 +4315,16 @@ async function salvarAporte(
 
 
     const observacao =
-      document.getElementById(
-        'aporteObservacao'
-      ).value.trim();
+      document
+        .getElementById(
+          'aporteObservacao'
+        )
+        .value
+        .trim();
 
 
     if (
-      !valor ||
+      !Number.isFinite(valor) ||
       valor <= 0
     ) {
 
@@ -5279,31 +4357,12 @@ async function salvarAporte(
     fecharModalAporte();
 
 
-    /*
-     * Busca os objetivos atualizados.
-     */
-    const objetivosAtualizados =
-      await api(
-        'listarObjetivos'
-      );
-
-
-    state.objetivos =
-      Array.isArray(
-        objetivosAtualizados
-      )
-        ? objetivosAtualizados
-        : [];
-
-
-    state.dashboard =
-      null;
+    await carregarDashboard(
+      true
+    );
 
 
     renderPaginaObjetivos();
-
-
-    await carregarDashboard();
 
 
   } catch (error) {
@@ -5318,7 +4377,7 @@ async function salvarAporte(
 
       erro.textContent =
         error.message ||
-        'Erro ao adicionar dinheiro.';
+        'Não foi possível adicionar o valor.';
 
     }
 
@@ -5338,10 +4397,6 @@ async function salvarAporte(
 }
 
 
-/* =====================================================
-   FECHAR MODAL DE APORTE
-   ===================================================== */
-
 function fecharModalAporte() {
 
   document
@@ -5354,18 +4409,52 @@ function fecharModalAporte() {
 
 
 /* =====================================================
-   EXCLUIR OBJETIVO
+   EDITAR OBJETIVO
    ===================================================== */
 
-async function excluirObjetivoDaPagina(
-  id
+function editarObjetivo(
+  objetivoId
 ) {
 
   const objetivo =
     state.objetivos.find(
       item =>
         String(item.id) ===
-        String(id)
+        String(objetivoId)
+    );
+
+
+  if (!objetivo) {
+
+    alert(
+      'Objetivo não encontrado.'
+    );
+
+    return;
+
+  }
+
+
+  abrirFormularioObjetivo(
+    objetivo
+  );
+
+}
+
+
+/* =====================================================
+   EXCLUIR OBJETIVO
+   ===================================================== */
+
+async function excluirObjetivoDaPagina(
+  objetivoId
+) {
+
+  const objetivo =
+    state.objetivos.find(
+      item =>
+        String(item.id) ===
+        String(objetivoId)
     );
 
 
@@ -5390,34 +4479,19 @@ async function excluirObjetivoDaPagina(
     await api(
       'excluirObjetivo',
       {
-        id: id
+        id:
+          objetivoId
       },
       'POST'
     );
 
 
-    const objetivosAtualizados =
-      await api(
-        'listarObjetivos'
-      );
-
-
-    state.objetivos =
-      Array.isArray(
-        objetivosAtualizados
-      )
-        ? objetivosAtualizados
-        : [];
-
-
-    state.dashboard =
-      null;
+    await carregarDashboard(
+      true
+    );
 
 
     renderPaginaObjetivos();
-
-
-    await carregarDashboard();
 
 
   } catch (error) {
@@ -5435,374 +4509,5 @@ async function excluirObjetivoDaPagina(
 
   }
 
-}
-
-
-/* =====================================================
-   CORREÇÃO DA ABERTURA DOS OBJETIVOS
-   ===================================================== */
-
-async function abrirPaginaObjetivos() {
-
-  criarPaginaObjetivos();
-
-
-  /*
-   * Garante que Lançamentos fique escondido.
-   */
-  if (lancamentosPage) {
-
-    lancamentosPage
-      .classList
-      .add(
-        'hidden'
-      );
-
-  }
-
-
-  /*
-   * Esconde a tela inicial.
-   */
-  document
-    .querySelector(
-      '.app'
-    )
-    ?.classList
-    .add(
-      'hidden'
-    );
-
-
-  /*
-   * Mostra Objetivos.
-   */
-  objetivosPage
-    .classList
-    .remove(
-      'hidden'
-    );
-
-
-  /*
-   * Navegação.
-   */
-  document
-    .querySelector(
-      '.bottom-nav'
-    )
-    ?.classList
-    .remove(
-      'lancamentos-open'
-    );
-
-
-  document
-    .querySelector(
-      '.bottom-nav'
-    )
-    ?.classList
-    .add(
-      'objetivos-open'
-    );
-
-
-  marcarNavAtiva(2);
-
-
-  /*
-   * Aqui NÃO buscamos novamente.
-   *
-   * Os objetivos já estão em state.objetivos
-   * desde o carregamento inicial.
-   */
-  renderPaginaObjetivos();
 
 }
-
-
-/* =====================================================
-   CSS DOS OBJETIVOS
-   ===================================================== */
-
-(function adicionarEstiloObjetivos() {
-
-  if (
-    document.getElementById(
-      'cssObjetivosFinal'
-    )
-  ) {
-    return;
-  }
-
-
-  const style =
-    document.createElement(
-      'style'
-    );
-
-
-  style.id =
-    'cssObjetivosFinal';
-
-
-  style.textContent = `
-
-    .objective-list {
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-
-
-    .objective-card {
-      position: relative;
-      padding: 18px;
-      border-radius: 20px;
-      border: 1px solid #292e3b;
-      background: #151821;
-      box-shadow:
-        0 10px 30px rgba(0,0,0,.12);
-    }
-
-
-    .objective-card-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-
-    .objective-title {
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-
-    .objective-icon {
-      width: 46px;
-      height: 46px;
-      flex: 0 0 46px;
-      display: grid;
-      place-items: center;
-      border-radius: 14px;
-      background: #211c3d;
-      font-size: 22px;
-    }
-
-
-    .objective-title strong {
-      display: block;
-      color: #fff;
-      font-size: 16px;
-      margin-bottom: 4px;
-    }
-
-
-    .objective-title small {
-      color: #9ca3b5;
-      font-size: 12px;
-    }
-
-
-    .objective-percent {
-      font-size: 18px;
-      color: #9d88ff;
-      white-space: nowrap;
-    }
-
-
-    .objective-progress {
-      width: 100%;
-      height: 10px;
-      margin: 17px 0 10px;
-      overflow: hidden;
-      border-radius: 999px;
-      background: #292e3b;
-    }
-
-
-    .objective-progress i {
-      display: block;
-      height: 100%;
-      border-radius: inherit;
-      background: #8066ff;
-      transition: width .35s ease;
-    }
-
-
-    .objective-values {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 14px;
-      margin-bottom: 12px;
-    }
-
-
-    .objective-values span:first-child {
-      color: #fff;
-      font-weight: 700;
-    }
-
-
-    .objective-values span:last-child {
-      color: #9ca3b5;
-    }
-
-
-    .objective-detail {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding-top: 12px;
-      border-top: 1px solid #252a35;
-      color: #9ca3b5;
-      font-size: 12px;
-    }
-
-
-    .objective-detail b {
-      color: #fff;
-    }
-
-
-    .objective-status-row {
-      margin-top: 10px;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-
-    .objective-active {
-      color: #43d7a1;
-    }
-
-
-    .objective-complete {
-      color: #9d88ff;
-    }
-
-
-    .objective-actions-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 14px;
-    }
-
-
-    .objective-secondary-btn {
-      flex: 1;
-      min-height: 40px;
-      border: 1px solid #343949;
-      border-radius: 12px;
-      background: #1b1f29;
-      color: #fff;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-
-
-    .objective-secondary-btn:hover {
-      border-color: #8066ff;
-      background: #211c3d;
-    }
-
-
-    .objective-delete-btn {
-      width: 40px;
-      height: 40px;
-      flex: 0 0 40px;
-      display: grid;
-      place-items: center;
-      padding: 0;
-      border: 1px solid #343949;
-      border-radius: 12px;
-      background: transparent;
-      color: #ff647b;
-      cursor: pointer;
-    }
-
-
-    .objective-delete-btn:hover {
-      background: rgba(255,100,123,.08);
-      border-color: #ff647b;
-    }
-
-
-    .objective-summary {
-      display: flex;
-      align-items: center;
-      gap: 13px;
-      margin-bottom: 16px;
-      padding: 16px;
-      border: 1px solid #2a2f3d;
-      border-radius: 18px;
-      background: #151821;
-    }
-
-
-    .objective-summary-icon {
-      width: 44px;
-      height: 44px;
-      display: grid;
-      place-items: center;
-      border-radius: 13px;
-      background: #211c3d;
-      font-size: 21px;
-    }
-
-
-    .objective-summary small {
-      display: block;
-      margin-bottom: 3px;
-      color: #9ca3b5;
-    }
-
-
-    .objective-summary strong {
-      color: #fff;
-      font-size: 17px;
-    }
-
-
-    @media (max-width: 600px) {
-
-      .objective-card {
-        padding: 15px;
-        border-radius: 18px;
-      }
-
-
-      .objective-detail {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-
-
-      .objective-title strong {
-        font-size: 15px;
-      }
-
-
-      .objective-percent {
-        font-size: 16px;
-      }
-
-    }
-
-  `;
-
-
-  document.head.appendChild(
-    style
-  );
-
-})();
