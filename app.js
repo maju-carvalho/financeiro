@@ -4511,3 +4511,27 @@ async function excluirObjetivoDaPagina(
 
 
 }
+
+
+/* =====================================================
+   INICIALIZAÇÃO DO APP
+   ===================================================== */
+
+document.addEventListener(
+  'DOMContentLoaded',
+  () => {
+
+    /*
+     * Inicializa o botão do Google.
+     * A função espera o script do Google estar disponível.
+     */
+    inicializarGoogle();
+
+    /*
+     * Se existir uma sessão salva, tenta restaurá-la.
+     * Caso o token não seja válido, o login permanece disponível.
+     */
+    restaurarSessao();
+
+  }
+);
