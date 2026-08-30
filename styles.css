@@ -1,5 +1,9 @@
 
 :root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
   --bg: #0b0d13;
   --surface: #151821;
   --surface-2: #1b1f29;
@@ -79,7 +83,7 @@ button {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: calc(24px + var(--safe-top)) calc(24px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(24px + var(--safe-left));
   background:
     radial-gradient(circle at top, rgba(128,102,255,.12), transparent 38%),
     var(--bg);
@@ -162,7 +166,7 @@ button {
 .app {
   width: min(100%, 760px);
   margin: 0 auto;
-  padding: 24px 18px 112px;
+  padding: calc(24px + var(--safe-top)) calc(18px + var(--safe-right)) calc(112px + var(--safe-bottom)) calc(18px + var(--safe-left));
 }
 
 .header {
@@ -550,7 +554,7 @@ button {
 .fab {
   position: fixed;
   right: max(18px, calc((100vw - 760px) / 2 + 18px));
-  bottom: 84px;
+  bottom: calc(84px + var(--safe-bottom));
   z-index: 100;
   width: 54px;
   height: 54px;
@@ -569,7 +573,7 @@ button {
 .bottom-nav {
   position: fixed;
   left: 50%;
-  bottom: 10px;
+  bottom: calc(10px + var(--safe-bottom));
   z-index: 90;
   width: min(calc(100vw - 20px), 740px);
   transform: translateX(-50%);
@@ -625,7 +629,7 @@ button {
   width: min(100%, 760px);
   min-height: 100vh;
   margin: 0 auto;
-  padding: 24px 18px 112px;
+  padding: calc(24px + var(--safe-top)) calc(18px + var(--safe-right)) calc(112px + var(--safe-bottom)) calc(18px + var(--safe-left));
   background: var(--bg);
   color: var(--text);
 }
@@ -1242,8 +1246,8 @@ button {
 
   .app,
   .finance-page {
-    padding-left: 14px;
-    padding-right: 14px;
+    padding-left: calc(14px + var(--safe-left));
+    padding-right: calc(14px + var(--safe-right));
   }
 
   .header h1,
@@ -1298,11 +1302,11 @@ button {
 @media (min-width: 761px) {
 
   .app {
-    padding-top: 34px;
+    padding-top: calc(34px + var(--safe-top));
   }
 
   .finance-page {
-    padding-top: 34px;
+    padding-top: calc(34px + var(--safe-top));
   }
 
 }
