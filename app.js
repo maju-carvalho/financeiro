@@ -54,7 +54,13 @@ const state = {
 
   lancamentosCarregando: null,
 
-  dashboardCarregado: false
+  dashboardCarregado: false,
+
+  lancamentosAba:
+    'movimentacoes',
+
+  recorrenciasGeradas:
+    {}
 
 };
 
@@ -455,7 +461,11 @@ function renderDashboard(
 
   const saldo =
     Number(
-      data.resultado || 0
+      (
+        data.saldoDisponivel ??
+        data.resultado ??
+        0
+      )
     );
 
   const receitas =
@@ -520,6 +530,7 @@ function renderDashboard(
    */
 
   renderUltimosLancamentos(
+    data.ultimos ||
     data.maiores ||
     []
   );
@@ -1108,6 +1119,18 @@ async function trocarEscopo(
   await carregarCadastrosDoEscopo(
     false
   );
+
+  state.recorrentes =
+    await api(
+      'listarRecorrentes',
+      {
+        escopo:
+          state.escopo
+      }
+    );
+
+  state.recorrenciasGeradas =
+    {};
 
   atualizarPermissaoVisual();
 
@@ -3158,7 +3181,7 @@ function renderPaginaLancamentos(
    FORMULÁRIO DE LANÇAMENTO
    ===================================================== */
 
-function abrirFormularioLancamento(
+function abrirFormularioLancamentoBaseV4(
   id = null
 ) {
 
@@ -3347,7 +3370,7 @@ function abrirFormularioLancamento(
 
 
           <label>
-            Data
+            Vencimento / previsão
 
             <input
               id="lancamentoData"
@@ -4446,7 +4469,7 @@ function fecharModalLancamento() {
    DÍVIDA RECORRENTE
    ===================================================== */
 
-function abrirFormularioRecorrente() {
+function abrirFormularioRecorrenteBaseV4() {
 
   if (
     !exigirEdicaoNoFrontend()
@@ -7227,7 +7250,11 @@ function renderPaginaRelatorios() {
     )
       ? [
           ...state.lancamentos
-        ]
+        ].filter(
+          item =>
+            item.status ===
+            'REALIZADO'
+        )
       : [];
 
 
@@ -7242,6 +7269,7 @@ function renderPaginaRelatorios() {
 
           const data =
             dataLancamentoRelatorio(
+              item.dataRealizacao ||
               item.data
             );
 
@@ -8171,7 +8199,7 @@ function criarPaginaAjustes() {
           </strong>
 
           <small>
-            Meu Financeiro · versão 4
+            Meu Financeiro · versão 5
           </small>
 
         </div>
@@ -10129,4 +10157,3046 @@ function atualizarBotoesTemaAjustes() {
       light
     );
 
+}
+
+
+/* =====================================================
+   V5 — PREVISTO X REALIZADO / RECORRENTES
+   ===================================================== */
+
+function hojeLocalISO() {
+
+  const agora =
+    new Date();
+
+  const ano =
+    agora.getFullYear();
+
+  const mes =
+    String(
+      agora.getMonth() + 1
+    ).padStart(
+      2,
+      '0'
+    );
+
+  const dia =
+    String(
+      agora.getDate()
+    ).padStart(
+      2,
+      '0'
+    );
+
+  return `${ano}-${mes}-${dia}`;
+}
+
+
+function situacaoVisualLancamento(
+  item
+) {
+
+  const status =
+    String(
+      item?.status ||
+      ''
+    ).toUpperCase();
+
+  const tipo =
+    String(
+      item?.tipo ||
+      ''
+    ).toUpperCase();
+
+  if (
+    status ===
+    'CANCELADO'
+  ) {
+
+    return {
+      codigo:
+        'cancelado',
+      label:
+        'Cancelado'
+    };
+  }
+
+  if (
+    status ===
+    'REALIZADO'
+  ) {
+
+    return {
+      codigo:
+        'realizado',
+      label:
+        tipo ===
+        'RECEITA'
+          ? 'Recebido'
+          : 'Pago'
+    };
+  }
+
+  const data =
+    String(
+      item?.data ||
+      ''
+    );
+
+  const hoje =
+    hojeLocalISO();
+
+  if (
+    data &&
+    data < hoje
+  ) {
+
+    return {
+      codigo:
+        'atrasado',
+      label:
+        tipo ===
+        'RECEITA'
+          ? 'Em atraso'
+          : 'Atrasada'
+    };
+  }
+
+  if (
+    data === hoje
+  ) {
+
+    return {
+      codigo:
+        'hoje',
+      label:
+        tipo ===
+        'RECEITA'
+          ? 'Receber hoje'
+          : 'Vence hoje'
+    };
+  }
+
+  return {
+    codigo:
+      'pendente',
+    label:
+      tipo ===
+      'RECEITA'
+        ? 'A receber'
+        : 'A vencer'
+  };
+}
+
+
+function invalidarCacheLancamentos() {
+
+  state.lancamentos =
+    [];
+
+  state.lancamentosCarregados =
+    false;
+
+  state.lancamentosCarregando =
+    null;
+
+  state.dashboard =
+    null;
+
+  state.dashboardCarregado =
+    false;
+}
+
+
+async function carregarRecorrentesDoEscopo() {
+
+  if (!state.escopo) {
+    return [];
+  }
+
+  const lista =
+    await api(
+      'listarRecorrentes',
+      {
+        escopo:
+          state.escopo
+      }
+    );
+
+  state.recorrentes =
+    Array.isArray(
+      lista
+    )
+      ? lista
+      : [];
+
+  return state.recorrentes;
+}
+
+
+async function gerarRecorrentesPlanejamento(
+  forcar = false
+) {
+
+  if (
+    !state.escopo ||
+    !podeEditarEscopoAtual()
+  ) {
+    return 0;
+  }
+
+  const agora =
+    new Date();
+
+  const chave =
+    `${state.escopo}:${
+      agora.getFullYear()
+    }-${
+      String(
+        agora.getMonth() + 1
+      ).padStart(
+        2,
+        '0'
+      )
+    }`;
+
+  if (
+    !forcar &&
+    state.recorrenciasGeradas?.[
+      chave
+    ]
+  ) {
+    return 0;
+  }
+
+  let criados = 0;
+
+  const meses = [
+    new Date(
+      agora.getFullYear(),
+      agora.getMonth(),
+      1
+    ),
+    new Date(
+      agora.getFullYear(),
+      agora.getMonth() + 1,
+      1
+    )
+  ];
+
+  for (
+    const referencia of meses
+  ) {
+
+    const resposta =
+      await api(
+        'gerarRecorrentesDoMes',
+        {
+          ano:
+            referencia.getFullYear(),
+
+          mes:
+            referencia.getMonth() + 1,
+
+          escopo:
+            state.escopo
+        },
+        'POST'
+      );
+
+    criados +=
+      Number(
+        resposta?.criados ||
+        0
+      );
+  }
+
+  state.recorrenciasGeradas =
+    state.recorrenciasGeradas ||
+    {};
+
+  state.recorrenciasGeradas[
+    chave
+  ] =
+    true;
+
+  if (
+    criados > 0
+  ) {
+    invalidarCacheLancamentos();
+  }
+
+  return criados;
+}
+
+
+async function sincronizarFinanceiroDepoisDeAlteracao(
+  incluirRecorrentes = false
+) {
+
+  invalidarCacheLancamentos();
+
+  const tarefas = [
+    carregarLancamentos(
+      {},
+      true
+    ),
+    carregarDashboard()
+  ];
+
+  if (
+    incluirRecorrentes
+  ) {
+
+    tarefas.push(
+      carregarRecorrentesDoEscopo()
+    );
+  }
+
+  await Promise.all(
+    tarefas
+  );
+
+  preencherFiltroMeses();
+  atualizarCategoriasFiltro();
+
+  if (
+    lancamentosPage &&
+    !lancamentosPage
+      .classList
+      .contains(
+        'hidden'
+      )
+  ) {
+
+    await atualizarListaLancamentosPage();
+  }
+
+  if (
+    relatoriosPage &&
+    !relatoriosPage
+      .classList
+      .contains(
+        'hidden'
+      )
+  ) {
+
+    renderPaginaRelatorios();
+  }
+}
+
+
+/* =====================================================
+   ABRIR PÁGINA DE LANÇAMENTOS — V5
+   ===================================================== */
+
+async function abrirPaginaLancamentos(
+  abrirFormulario = false,
+  abrirRecorrente = false
+) {
+
+  criarPaginaLancamentos();
+
+  prepararPaginaInterna(
+    1
+  );
+
+  lancamentosPage
+    .classList
+    .remove(
+      'hidden'
+    );
+
+  state.lancamentosAba =
+    abrirRecorrente
+      ? 'recorrentes'
+      : 'movimentacoes';
+
+  try {
+
+    await gerarRecorrentesPlanejamento();
+
+  } catch (error) {
+
+    console.error(
+      'Gerar previsões recorrentes:',
+      error
+    );
+  }
+
+  await Promise.all([
+    carregarLancamentos(),
+    carregarRecorrentesDoEscopo()
+  ]);
+
+  selecionarAbaLancamentos(
+    state.lancamentosAba,
+    false
+  );
+
+  await atualizarListaLancamentosPage();
+
+  if (
+    abrirFormulario
+  ) {
+
+    abrirFormularioLancamento();
+  }
+}
+
+
+/* =====================================================
+   PÁGINA DE LANÇAMENTOS — V5
+   ===================================================== */
+
+function criarPaginaLancamentos() {
+
+  if (
+    lancamentosPage
+  ) {
+    return;
+  }
+
+  lancamentosPage =
+    document.createElement(
+      'div'
+    );
+
+  lancamentosPage.id =
+    'lancamentosPage';
+
+  lancamentosPage.className =
+    'finance-page hidden';
+
+  lancamentosPage.innerHTML = `
+
+    <header class="finance-page-header">
+
+      <div>
+
+        <p class="eyebrow">
+          MEU FINANCEIRO
+        </p>
+
+        <h1>
+          Lançamentos
+        </h1>
+
+        <p class="finance-page-subtitle">
+          Separe o que já aconteceu do que ainda está por vir
+        </p>
+
+      </div>
+
+      <button
+        class="finance-back-btn"
+        id="backLancamentosBtn"
+        aria-label="Voltar"
+        type="button"
+      >
+        ←
+      </button>
+
+    </header>
+
+
+    <nav
+      class="launch-view-tabs"
+      aria-label="Visualização dos lançamentos"
+    >
+
+      <button
+        type="button"
+        data-launch-tab="movimentacoes"
+        class="active"
+      >
+        Movimentações
+      </button>
+
+      <button
+        type="button"
+        data-launch-tab="pendentes"
+      >
+        A pagar / receber
+        <span
+          class="launch-tab-count"
+          id="pendentesTabCount"
+        ></span>
+      </button>
+
+      <button
+        type="button"
+        data-launch-tab="recorrentes"
+      >
+        Recorrentes
+        <span
+          class="launch-tab-count"
+          id="recorrentesTabCount"
+        ></span>
+      </button>
+
+    </nav>
+
+
+    <section class="launch-summary">
+
+      <div>
+        <small id="launchReceitasLabel">
+          Recebido
+        </small>
+
+        <strong
+          id="launchReceitas"
+          class="positive"
+        >
+          R$ 0,00
+        </strong>
+      </div>
+
+      <div>
+        <small id="launchDespesasLabel">
+          Pago
+        </small>
+
+        <strong
+          id="launchDespesas"
+          class="negative"
+        >
+          R$ 0,00
+        </strong>
+      </div>
+
+    </section>
+
+
+    <section class="launch-actions">
+
+      <button
+        class="primary-action"
+        id="novoLancamentoPageBtn"
+        type="button"
+      >
+        <span>＋</span>
+        Novo lançamento
+      </button>
+
+      <button
+        class="secondary-action"
+        id="novoRecorrentePageBtn"
+        type="button"
+      >
+        🔄 Nova recorrência
+      </button>
+
+    </section>
+
+
+    <section
+      class="launch-filters"
+      id="launchFilters"
+    >
+
+      <div class="filter-row">
+
+        <select
+          id="filtroMesLancamentos"
+        >
+          <option value="TODOS">
+            Todos os meses
+          </option>
+        </select>
+
+        <select
+          id="filtroTipoLancamentos"
+        >
+
+          <option value="">
+            Todos os tipos
+          </option>
+
+          <option value="RECEITA">
+            Receitas
+          </option>
+
+          <option value="DESPESA">
+            Despesas
+          </option>
+
+        </select>
+
+      </div>
+
+
+      <div class="filter-row">
+
+        <select
+          id="filtroCategoriaLancamentos"
+        >
+          <option value="">
+            Todas as categorias
+          </option>
+        </select>
+
+        <input
+          id="buscaLancamentos"
+          type="search"
+          placeholder="Buscar lançamento..."
+        >
+
+      </div>
+
+    </section>
+
+
+    <section
+      id="listaLancamentosPage"
+      class="launch-list"
+    ></section>
+
+
+    <div
+      id="modalLancamento"
+      class="finance-modal hidden"
+    ></div>
+
+  `;
+
+  document
+    .getElementById(
+      'app'
+    )
+    ?.appendChild(
+      lancamentosPage
+    );
+
+  document
+    .getElementById(
+      'backLancamentosBtn'
+    )
+    ?.addEventListener(
+      'click',
+      voltarInicio
+    );
+
+  document
+    .getElementById(
+      'novoLancamentoPageBtn'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        abrirFormularioLancamento()
+    );
+
+  document
+    .getElementById(
+      'novoRecorrentePageBtn'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        abrirFormularioRecorrente()
+    );
+
+  lancamentosPage
+    .querySelectorAll(
+      '[data-launch-tab]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () =>
+            selecionarAbaLancamentos(
+              button.dataset.launchTab
+            )
+        );
+      }
+    );
+
+  [
+    'filtroMesLancamentos',
+    'filtroCategoriaLancamentos'
+  ].forEach(
+    id => {
+
+      document
+        .getElementById(
+          id
+        )
+        ?.addEventListener(
+          'change',
+          atualizarListaLancamentosPage
+        );
+    }
+  );
+
+  document
+    .getElementById(
+      'filtroTipoLancamentos'
+    )
+    ?.addEventListener(
+      'change',
+      () => {
+
+        atualizarCategoriasFiltro();
+        atualizarListaLancamentosPage();
+      }
+    );
+
+  document
+    .getElementById(
+      'buscaLancamentos'
+    )
+    ?.addEventListener(
+      'input',
+      atualizarListaLancamentosPage
+    );
+
+  preencherFiltroMeses();
+  atualizarCategoriasFiltro();
+}
+
+
+function selecionarAbaLancamentos(
+  aba,
+  atualizar = true
+) {
+
+  const permitidas = [
+    'movimentacoes',
+    'pendentes',
+    'recorrentes'
+  ];
+
+  state.lancamentosAba =
+    permitidas.includes(
+      aba
+    )
+      ? aba
+      : 'movimentacoes';
+
+  lancamentosPage
+    ?.querySelectorAll(
+      '[data-launch-tab]'
+    )
+    .forEach(
+      button => {
+
+        button.classList.toggle(
+          'active',
+          button.dataset.launchTab ===
+            state.lancamentosAba
+        );
+      }
+    );
+
+  document
+    .getElementById(
+      'launchFilters'
+    )
+    ?.classList
+    .toggle(
+      'hidden',
+      state.lancamentosAba ===
+        'recorrentes'
+    );
+
+  if (
+    atualizar
+  ) {
+
+    atualizarListaLancamentosPage();
+  }
+}
+
+
+function atualizarContadoresTabsLancamentos() {
+
+  const pendentes =
+    state.lancamentos
+      .filter(
+        item =>
+          item.status ===
+          'PENDENTE'
+      )
+      .length;
+
+  const recorrentes =
+    state.recorrentes
+      .filter(
+        item =>
+          item.ativo
+      )
+      .length;
+
+  const pendentesEl =
+    document.getElementById(
+      'pendentesTabCount'
+    );
+
+  const recorrentesEl =
+    document.getElementById(
+      'recorrentesTabCount'
+    );
+
+  if (
+    pendentesEl
+  ) {
+
+    pendentesEl.textContent =
+      pendentes > 0
+        ? String(
+            pendentes
+          )
+        : '';
+  }
+
+  if (
+    recorrentesEl
+  ) {
+
+    recorrentesEl.textContent =
+      recorrentes > 0
+        ? String(
+            recorrentes
+          )
+        : '';
+  }
+}
+
+
+async function atualizarListaLancamentosPage() {
+
+  const lista =
+    document.getElementById(
+      'listaLancamentosPage'
+    );
+
+  if (!lista) {
+    return;
+  }
+
+  if (
+    !state.lancamentosCarregados
+  ) {
+
+    lista.innerHTML = `
+      <div class="launch-loading">
+        Carregando lançamentos...
+      </div>
+    `;
+
+    await carregarLancamentos();
+  }
+
+  if (
+    state.lancamentosAba ===
+    'recorrentes'
+  ) {
+
+    if (
+      !Array.isArray(
+        state.recorrentes
+      )
+    ) {
+      state.recorrentes = [];
+    }
+
+    renderPaginaRecorrentes();
+    atualizarContadoresTabsLancamentos();
+    return;
+  }
+
+  const mes =
+    document.getElementById(
+      'filtroMesLancamentos'
+    )?.value ||
+    'TODOS';
+
+  const tipo =
+    document.getElementById(
+      'filtroTipoLancamentos'
+    )?.value ||
+    '';
+
+  const categoria =
+    document.getElementById(
+      'filtroCategoriaLancamentos'
+    )?.value ||
+    '';
+
+  const busca =
+    (
+      document.getElementById(
+        'buscaLancamentos'
+      )?.value ||
+      ''
+    )
+      .trim()
+      .toLowerCase();
+
+  let filtrados =
+    [
+      ...state.lancamentos
+    ]
+      .filter(
+        item => {
+
+          if (
+            state.lancamentosAba ===
+            'pendentes'
+          ) {
+
+            return (
+              item.status ===
+              'PENDENTE'
+            );
+          }
+
+          return (
+            item.status ===
+            'REALIZADO'
+          );
+        }
+      );
+
+  if (
+    mes !==
+    'TODOS'
+  ) {
+
+    filtrados =
+      filtrados.filter(
+        item =>
+          String(
+            item.data ||
+            ''
+          ).startsWith(
+            mes
+          )
+      );
+  }
+
+  if (tipo) {
+
+    filtrados =
+      filtrados.filter(
+        item =>
+          item.tipo ===
+          tipo
+      );
+  }
+
+  if (categoria) {
+
+    filtrados =
+      filtrados.filter(
+        item =>
+          item.categoria ===
+          categoria
+      );
+  }
+
+  if (busca) {
+
+    filtrados =
+      filtrados.filter(
+        item => {
+
+          const texto =
+            [
+              item.descricao,
+              item.categoria,
+              item.conta,
+              item.formaPagamento
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase();
+
+          return texto.includes(
+            busca
+          );
+        }
+      );
+  }
+
+  if (
+    state.lancamentosAba ===
+    'pendentes'
+  ) {
+
+    filtrados.sort(
+      (a, b) =>
+        String(
+          a.data ||
+          ''
+        ).localeCompare(
+          String(
+            b.data ||
+            ''
+          )
+        )
+    );
+  }
+
+  renderPaginaLancamentos(
+    filtrados
+  );
+
+  atualizarContadoresTabsLancamentos();
+}
+
+
+function renderPaginaLancamentos(
+  lancamentos
+) {
+
+  const lista =
+    document.getElementById(
+      'listaLancamentosPage'
+    );
+
+  if (!lista) {
+    return;
+  }
+
+  const receitas =
+    lancamentos
+      .filter(
+        item =>
+          item.tipo ===
+          'RECEITA'
+      )
+      .reduce(
+        (
+          total,
+          item
+        ) =>
+          total +
+          Number(
+            item.valor ||
+            0
+          ),
+        0
+      );
+
+  const despesas =
+    lancamentos
+      .filter(
+        item =>
+          item.tipo ===
+          'DESPESA'
+      )
+      .reduce(
+        (
+          total,
+          item
+        ) =>
+          total +
+          Number(
+            item.valor ||
+            0
+          ),
+        0
+      );
+
+  const labelReceitas =
+    document.getElementById(
+      'launchReceitasLabel'
+    );
+
+  const labelDespesas =
+    document.getElementById(
+      'launchDespesasLabel'
+    );
+
+  const receitasEl =
+    document.getElementById(
+      'launchReceitas'
+    );
+
+  const despesasEl =
+    document.getElementById(
+      'launchDespesas'
+    );
+
+  if (
+    state.lancamentosAba ===
+    'pendentes'
+  ) {
+
+    if (labelReceitas) {
+      labelReceitas.textContent =
+        'A receber';
+    }
+
+    if (labelDespesas) {
+      labelDespesas.textContent =
+        'A pagar';
+    }
+
+  } else {
+
+    if (labelReceitas) {
+      labelReceitas.textContent =
+        'Recebido';
+    }
+
+    if (labelDespesas) {
+      labelDespesas.textContent =
+        'Pago';
+    }
+  }
+
+  if (receitasEl) {
+
+    receitasEl.textContent =
+      formatMoney(
+        receitas
+      );
+  }
+
+  if (despesasEl) {
+
+    despesasEl.textContent =
+      formatMoney(
+        despesas
+      );
+  }
+
+  if (
+    !lancamentos.length
+  ) {
+
+    lista.innerHTML = `
+
+      <div class="launch-empty">
+
+        <span>
+          ${
+            state.lancamentosAba ===
+            'pendentes'
+              ? '🗓️'
+              : '💸'
+          }
+        </span>
+
+        <strong>
+          ${
+            state.lancamentosAba ===
+            'pendentes'
+              ? 'Nada a pagar ou receber'
+              : 'Nenhuma movimentação encontrada'
+          }
+        </strong>
+
+        <small>
+          ${
+            state.lancamentosAba ===
+            'pendentes'
+              ? 'Contas futuras e valores a receber aparecerão aqui.'
+              : 'Registre uma receita ou despesa para começar.'
+          }
+        </small>
+
+      </div>
+
+    `;
+
+    return;
+  }
+
+  const podeEditar =
+    podeEditarEscopoAtual();
+
+  lista.innerHTML =
+    lancamentos
+      .map(
+        item => {
+
+          const despesa =
+            item.tipo ===
+            'DESPESA';
+
+          const situacao =
+            situacaoVisualLancamento(
+              item
+            );
+
+          const parcelas =
+            Number(
+              item.parcelas ||
+              1
+            );
+
+          const parcelaAtual =
+            Number(
+              item.parcelaAtual ||
+              1
+            );
+
+          const parcelamento =
+            parcelas > 1
+              ? `Parcela ${parcelaAtual}/${parcelas}`
+              : '';
+
+          let dataTexto;
+
+          if (
+            item.status ===
+            'REALIZADO'
+          ) {
+
+            const verbo =
+              item.tipo ===
+              'RECEITA'
+                ? 'Recebido'
+                : 'Pago';
+
+            dataTexto =
+              item.dataRealizacao
+                ? `${verbo} em ${formatDate(
+                    item.dataRealizacao
+                  )}`
+                : `${verbo}`;
+
+            if (
+              item.data &&
+              item.dataRealizacao &&
+              item.data !==
+                item.dataRealizacao
+            ) {
+
+              dataTexto +=
+                ` · Previsto ${formatDate(
+                  item.data
+                )}`;
+            }
+
+          } else {
+
+            dataTexto =
+              item.tipo ===
+              'RECEITA'
+                ? `Previsto ${formatDate(
+                    item.data
+                  )}`
+                : `Vence ${formatDate(
+                    item.data
+                  )}`;
+          }
+
+          return `
+
+            <article
+              class="launch-item launch-item-v5"
+            >
+
+              <div
+                class="launch-icon"
+              >
+                ${iconeCategoria(
+                  item.categoria
+                )}
+              </div>
+
+
+              <div
+                class="launch-info"
+              >
+
+                <div
+                  class="launch-title-line"
+                >
+
+                  <strong>
+                    ${escapeHtml(
+                      item.descricao ||
+                      'Sem descrição'
+                    )}
+                  </strong>
+
+                  <span
+                    class="launch-status-badge status-${
+                      situacao.codigo
+                    }"
+                  >
+                    ${escapeHtml(
+                      situacao.label
+                    )}
+                  </span>
+
+                </div>
+
+
+                <small>
+                  ${escapeHtml(
+                    dataTexto
+                  )}
+
+                  ${
+                    item.categoria
+                      ? ' · ' +
+                        escapeHtml(
+                          item.categoria
+                        )
+                      : ''
+                  }
+
+                  ${
+                    item.conta
+                      ? ' · ' +
+                        escapeHtml(
+                          item.conta
+                        )
+                      : ''
+                  }
+                </small>
+
+
+                ${
+                  item.formaPagamento
+                    ? `
+                      <small class="launch-meta">
+                        ${escapeHtml(
+                          item.formaPagamento
+                        )}
+                      </small>
+                    `
+                    : ''
+                }
+
+
+                ${
+                  parcelamento
+                    ? `
+                      <small class="launch-meta">
+                        ${parcelamento}
+                      </small>
+                    `
+                    : ''
+                }
+
+
+                ${
+                  item.recorrenteId
+                    ? `
+                      <small class="launch-recurring-tag">
+                        🔄 Recorrente
+                      </small>
+                    `
+                    : ''
+                }
+
+              </div>
+
+
+              <div
+                class="launch-value"
+              >
+
+                <strong
+                  class="${
+                    despesa
+                      ? 'negative'
+                      : 'positive'
+                  }"
+                >
+                  ${
+                    despesa
+                      ? '− '
+                      : '+ '
+                  }${formatMoney(
+                    item.valor
+                  )}
+                </strong>
+
+              </div>
+
+
+              ${
+                podeEditar
+                  ? `
+                    <div
+                      class="launch-actions-icons"
+                    >
+
+                      ${
+                        item.status ===
+                        'PENDENTE'
+                          ? `
+                            <button
+                              type="button"
+                              class="launch-realize-btn"
+                              data-action="realize"
+                              data-id="${
+                                escapeAttribute(
+                                  item.id
+                                )
+                              }"
+                              title="${
+                                item.tipo ===
+                                'RECEITA'
+                                  ? 'Marcar como recebido'
+                                  : 'Marcar como pago'
+                              }"
+                            >
+                              ✓ ${
+                                item.tipo ===
+                                'RECEITA'
+                                  ? 'Receber'
+                                  : 'Pagar'
+                              }
+                            </button>
+                          `
+                          : ''
+                      }
+
+                      <button
+                        type="button"
+                        class="launch-icon-btn"
+                        data-action="edit"
+                        data-id="${
+                          escapeAttribute(
+                            item.id
+                          )
+                        }"
+                        title="Editar lançamento"
+                        aria-label="Editar lançamento"
+                      >
+                        ✏️
+                      </button>
+
+                      <button
+                        type="button"
+                        class="launch-icon-btn danger"
+                        data-action="delete"
+                        data-id="${
+                          escapeAttribute(
+                            item.id
+                          )
+                        }"
+                        title="Excluir lançamento"
+                        aria-label="Excluir lançamento"
+                      >
+                        🗑️
+                      </button>
+
+                    </div>
+                  `
+                  : ''
+              }
+
+            </article>
+
+          `;
+        }
+      )
+      .join('');
+
+  lista
+    .querySelectorAll(
+      '[data-action="realize"]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () =>
+            marcarLancamentoRealizado(
+              button.dataset.id
+            )
+        );
+      }
+    );
+
+  lista
+    .querySelectorAll(
+      '[data-action="edit"]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () =>
+            abrirFormularioLancamento(
+              button.dataset.id
+            )
+        );
+      }
+    );
+
+  lista
+    .querySelectorAll(
+      '[data-action="delete"]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () =>
+            excluirLancamentoDaPagina(
+              button.dataset.id
+            )
+        );
+      }
+    );
+}
+
+
+async function marcarLancamentoRealizado(
+  id
+) {
+
+  if (
+    !exigirEdicaoNoFrontend()
+  ) {
+    return;
+  }
+
+  const item =
+    state.lancamentos.find(
+      x =>
+        String(
+          x.id
+        ) ===
+        String(
+          id
+        )
+    );
+
+  if (!item) {
+    return;
+  }
+
+  const texto =
+    item.tipo ===
+    'RECEITA'
+      ? 'recebido'
+      : 'pago';
+
+  const confirmado =
+    window.confirm(
+      `Marcar "${item.descricao}" como ${texto}?`
+    );
+
+  if (!confirmado) {
+    return;
+  }
+
+  try {
+
+    await api(
+      'atualizarStatusLancamento',
+      {
+        id:
+          item.id,
+
+        status:
+          'REALIZADO',
+
+        dataRealizacao:
+          hojeLocalISO()
+      },
+      'POST'
+    );
+
+    await sincronizarFinanceiroDepoisDeAlteracao();
+
+  } catch (error) {
+
+    console.error(
+      'Atualizar status:',
+      error
+    );
+
+    window.alert(
+      error.message ||
+      'Não foi possível atualizar o lançamento.'
+    );
+  }
+}
+
+
+/* =====================================================
+   FORMULÁRIO DE LANÇAMENTO — STATUS
+   ===================================================== */
+
+function abrirFormularioLancamento(
+  id = null
+) {
+
+  abrirFormularioLancamentoBaseV4(
+    id
+  );
+
+  const form =
+    document.getElementById(
+      'formLancamento'
+    );
+
+  if (!form) {
+    return;
+  }
+
+  const existente =
+    id
+      ? state.lancamentos.find(
+          item =>
+            String(
+              item.id
+            ) ===
+            String(
+              id
+            )
+        )
+      : null;
+
+  const grids =
+    form.querySelectorAll(
+      '.form-grid'
+    );
+
+  const statusGrid =
+    document.createElement(
+      'div'
+    );
+
+  statusGrid.className =
+    'form-grid status-form-grid';
+
+  statusGrid.innerHTML = `
+
+    <label>
+      Situação
+
+      <select
+        id="lancamentoStatus"
+      ></select>
+
+      <small class="field-hint">
+        Valores pendentes não alteram o saldo disponível.
+      </small>
+    </label>
+
+    <label
+      id="lancamentoDataRealizacaoWrap"
+    >
+      <span id="lancamentoDataRealizacaoLabel">
+        Data do pagamento
+      </span>
+
+      <input
+        id="lancamentoDataRealizacao"
+        type="date"
+      >
+    </label>
+
+  `;
+
+  if (
+    grids.length >= 2
+  ) {
+
+    grids[1]
+      .parentNode
+      .insertBefore(
+        statusGrid,
+        grids[1]
+      );
+
+  } else {
+
+    const observacao =
+      document.getElementById(
+        'lancamentoObservacao'
+      )
+      ?.closest(
+        'label'
+      );
+
+    form.insertBefore(
+      statusGrid,
+      observacao ||
+      form.lastElementChild
+    );
+  }
+
+  const statusSelect =
+    document.getElementById(
+      'lancamentoStatus'
+    );
+
+  const dataInput =
+    document.getElementById(
+      'lancamentoData'
+    );
+
+  const dataRealizacao =
+    document.getElementById(
+      'lancamentoDataRealizacao'
+    );
+
+  const statusInicial =
+    existente?.status ||
+    (
+      String(
+        dataInput?.value ||
+        ''
+      ) >
+      hojeLocalISO()
+        ? 'PENDENTE'
+        : 'REALIZADO'
+    );
+
+  if (
+    statusSelect
+  ) {
+
+    statusSelect.dataset.manual =
+      existente
+        ? '1'
+        : '0';
+  }
+
+  atualizarOpcoesStatusFormulario(
+    statusInicial
+  );
+
+  if (
+    dataRealizacao
+  ) {
+
+    dataRealizacao.value =
+      existente?.dataRealizacao ||
+      (
+        statusInicial ===
+        'REALIZADO'
+          ? hojeLocalISO()
+          : ''
+      );
+  }
+
+  atualizarVisibilidadeDataRealizacao();
+
+  statusSelect
+    ?.addEventListener(
+      'change',
+      () => {
+
+        statusSelect.dataset.manual =
+          '1';
+
+        if (
+          statusSelect.value ===
+            'REALIZADO' &&
+          dataRealizacao &&
+          !dataRealizacao.value
+        ) {
+
+          dataRealizacao.value =
+            hojeLocalISO();
+        }
+
+        atualizarVisibilidadeDataRealizacao();
+      }
+    );
+
+  dataInput
+    ?.addEventListener(
+      'change',
+      () => {
+
+        if (
+          !existente &&
+          statusSelect?.dataset
+            .manual !==
+            '1'
+        ) {
+
+          const sugerido =
+            String(
+              dataInput.value ||
+              ''
+            ) >
+            hojeLocalISO()
+              ? 'PENDENTE'
+              : 'REALIZADO';
+
+          atualizarOpcoesStatusFormulario(
+            sugerido
+          );
+
+          if (
+            sugerido ===
+            'REALIZADO' &&
+            dataRealizacao &&
+            !dataRealizacao.value
+          ) {
+
+            dataRealizacao.value =
+              hojeLocalISO();
+          }
+
+          atualizarVisibilidadeDataRealizacao();
+        }
+      }
+    );
+
+  form
+    .querySelectorAll(
+      '.type-btn'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () => {
+
+            const atual =
+              document.getElementById(
+                'lancamentoStatus'
+              )?.value ||
+              'PENDENTE';
+
+            atualizarOpcoesStatusFormulario(
+              atual
+            );
+
+            atualizarVisibilidadeDataRealizacao();
+          }
+        );
+      }
+    );
+}
+
+
+function atualizarOpcoesStatusFormulario(
+  valorSelecionado
+) {
+
+  const select =
+    document.getElementById(
+      'lancamentoStatus'
+    );
+
+  if (!select) {
+    return;
+  }
+
+  const tipo =
+    document.getElementById(
+      'lancamentoTipo'
+    )?.value ||
+    'DESPESA';
+
+  const pendenteLabel =
+    tipo ===
+    'RECEITA'
+      ? 'A receber'
+      : 'A vencer';
+
+  const realizadoLabel =
+    tipo ===
+    'RECEITA'
+      ? 'Recebido'
+      : 'Pago';
+
+  select.innerHTML = `
+    <option value="PENDENTE">
+      ${pendenteLabel}
+    </option>
+    <option value="REALIZADO">
+      ${realizadoLabel}
+    </option>
+  `;
+
+  if (
+    [
+      'PENDENTE',
+      'REALIZADO'
+    ].includes(
+      valorSelecionado
+    )
+  ) {
+
+    select.value =
+      valorSelecionado;
+  }
+
+  const label =
+    document.getElementById(
+      'lancamentoDataRealizacaoLabel'
+    );
+
+  if (label) {
+
+    label.textContent =
+      tipo ===
+      'RECEITA'
+        ? 'Data do recebimento'
+        : 'Data do pagamento';
+  }
+}
+
+
+function atualizarVisibilidadeDataRealizacao() {
+
+  const select =
+    document.getElementById(
+      'lancamentoStatus'
+    );
+
+  const wrap =
+    document.getElementById(
+      'lancamentoDataRealizacaoWrap'
+    );
+
+  if (!wrap) {
+    return;
+  }
+
+  wrap.classList.toggle(
+    'hidden',
+    select?.value !==
+      'REALIZADO'
+  );
+}
+
+
+async function salvarLancamentoFormulario(
+  event,
+  id = null
+) {
+
+  event.preventDefault();
+
+  const erro =
+    document.getElementById(
+      'lancamentoFormErro'
+    );
+
+  const button =
+    document.querySelector(
+      '.save-launch-btn'
+    );
+
+  try {
+
+    if (erro) {
+      erro.textContent = '';
+    }
+
+    if (button) {
+
+      button.disabled =
+        true;
+
+      button.textContent =
+        id
+          ? 'Salvando alterações...'
+          : 'Salvando...';
+    }
+
+    const dados = {
+
+      id:
+        id ||
+        undefined,
+
+      escopo:
+        state.escopo,
+
+      tipo:
+        document.getElementById(
+          'lancamentoTipo'
+        ).value,
+
+      descricao:
+        document.getElementById(
+          'lancamentoDescricao'
+        ).value.trim(),
+
+      valor:
+        Number(
+          document.getElementById(
+            'lancamentoValor'
+          ).value
+        ),
+
+      data:
+        document.getElementById(
+          'lancamentoData'
+        ).value,
+
+      categoria:
+        document.getElementById(
+          'lancamentoCategoria'
+        ).value,
+
+      conta:
+        document.getElementById(
+          'lancamentoConta'
+        ).value,
+
+      formaPagamento:
+        document.getElementById(
+          'lancamentoForma'
+        ).value,
+
+      parcelas:
+        Number(
+          document.getElementById(
+            'lancamentoParcelas'
+          ).value ||
+          1
+        ),
+
+      observacao:
+        document.getElementById(
+          'lancamentoObservacao'
+        ).value.trim(),
+
+      status:
+        document.getElementById(
+          'lancamentoStatus'
+        )?.value ||
+        (
+          String(
+            document.getElementById(
+              'lancamentoData'
+            ).value
+          ) >
+          hojeLocalISO()
+            ? 'PENDENTE'
+            : 'REALIZADO'
+        ),
+
+      dataRealizacao:
+        document.getElementById(
+          'lancamentoDataRealizacao'
+        )?.value ||
+        ''
+    };
+
+    if (!dados.descricao) {
+
+      throw new Error(
+        'Informe uma descrição.'
+      );
+    }
+
+    if (
+      !dados.valor ||
+      dados.valor <= 0
+    ) {
+
+      throw new Error(
+        'Informe um valor válido.'
+      );
+    }
+
+    if (
+      dados.status ===
+        'REALIZADO' &&
+      !dados.dataRealizacao
+    ) {
+
+      dados.dataRealizacao =
+        hojeLocalISO();
+    }
+
+    const recorrente =
+      !id &&
+      Boolean(
+        document.getElementById(
+          'lancamentoRecorrente'
+        )?.checked
+      );
+
+    if (recorrente) {
+
+      if (
+        dados.tipo !==
+        'DESPESA'
+      ) {
+
+        throw new Error(
+          'Dívidas recorrentes devem ser despesas.'
+        );
+      }
+
+      if (
+        dados.parcelas >
+        1
+      ) {
+
+        throw new Error(
+          'Para uma dívida recorrente, deixe o parcelamento em 1.'
+        );
+      }
+
+      const dia =
+        Math.max(
+          1,
+          Math.min(
+            31,
+            Number(
+              document.getElementById(
+                'recorrenciaDia'
+              )?.value ||
+              1
+            )
+          )
+        );
+
+      const dataFim =
+        document.getElementById(
+          'recorrenciaFim'
+        )?.value ||
+        '';
+
+      await api(
+        'salvarRecorrente',
+        {
+          escopo:
+            state.escopo,
+
+          descricao:
+            dados.descricao,
+
+          tipo:
+            dados.tipo,
+
+          categoria:
+            dados.categoria,
+
+          valor:
+            dados.valor,
+
+          dia:
+            dia,
+
+          conta:
+            dados.conta,
+
+          formaPagamento:
+            dados.formaPagamento,
+
+          cartao:
+            '',
+
+          parcelas:
+            1,
+
+          dataInicio:
+            dados.data,
+
+          dataFim:
+            dataFim,
+
+          ativo:
+            true,
+
+          observacao:
+            dados.observacao
+        },
+        'POST'
+      );
+
+      await carregarRecorrentesDoEscopo();
+
+      await gerarRecorrentesPlanejamento(
+        true
+      );
+
+    } else {
+
+      const action =
+        !id &&
+        dados.parcelas >
+        1
+          ? 'salvarParcelamento'
+          : 'salvarLancamento';
+
+      await api(
+        action,
+        dados,
+        'POST'
+      );
+    }
+
+    fecharModalLancamento();
+
+    await sincronizarFinanceiroDepoisDeAlteracao(
+      recorrente
+    );
+
+  } catch (error) {
+
+    console.error(
+      'Salvar lançamento:',
+      error
+    );
+
+    if (erro) {
+
+      erro.textContent =
+        error.message ||
+        'Não foi possível salvar o lançamento.';
+    }
+
+  } finally {
+
+    if (button) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        id
+          ? 'Salvar alterações'
+          : 'Salvar lançamento';
+    }
+  }
+}
+
+
+/* =====================================================
+   RECORRENTES — LISTA / EDIÇÃO
+   ===================================================== */
+
+function renderPaginaRecorrentes() {
+
+  const lista =
+    document.getElementById(
+      'listaLancamentosPage'
+    );
+
+  if (!lista) {
+    return;
+  }
+
+  const recorrentes =
+    [
+      ...(
+        state.recorrentes ||
+        []
+      )
+    ]
+      .sort(
+        (a, b) => {
+
+          if (
+            a.ativo !==
+            b.ativo
+          ) {
+
+            return a.ativo
+              ? -1
+              : 1;
+          }
+
+          return Number(
+            a.dia ||
+            1
+          ) -
+          Number(
+            b.dia ||
+            1
+          );
+        }
+      );
+
+  const ativos =
+    recorrentes.filter(
+      item =>
+        item.ativo
+    );
+
+  const totalMensal =
+    ativos
+      .filter(
+        item =>
+          item.tipo ===
+          'DESPESA'
+      )
+      .reduce(
+        (
+          total,
+          item
+        ) =>
+          total +
+          Number(
+            item.valor ||
+            0
+          ),
+        0
+      );
+
+  const label1 =
+    document.getElementById(
+      'launchReceitasLabel'
+    );
+
+  const label2 =
+    document.getElementById(
+      'launchDespesasLabel'
+    );
+
+  const valor1 =
+    document.getElementById(
+      'launchReceitas'
+    );
+
+  const valor2 =
+    document.getElementById(
+      'launchDespesas'
+    );
+
+  if (label1) {
+    label1.textContent =
+      'Recorrências ativas';
+  }
+
+  if (label2) {
+    label2.textContent =
+      'Total mensal';
+  }
+
+  if (valor1) {
+
+    valor1.textContent =
+      String(
+        ativos.length
+      );
+
+    valor1.className =
+      'positive';
+  }
+
+  if (valor2) {
+
+    valor2.textContent =
+      formatMoney(
+        totalMensal
+      );
+
+    valor2.className =
+      'negative';
+  }
+
+  if (
+    !recorrentes.length
+  ) {
+
+    lista.innerHTML = `
+
+      <div class="launch-empty">
+
+        <span>🔄</span>
+
+        <strong>
+          Nenhuma recorrência cadastrada
+        </strong>
+
+        <small>
+          Cadastre aluguel, faculdade, internet, assinaturas e outras contas mensais.
+        </small>
+
+        ${
+          podeEditarEscopoAtual()
+            ? `
+              <button
+                class="primary-action"
+                type="button"
+                onclick="abrirFormularioRecorrente()"
+              >
+                Nova recorrência
+              </button>
+            `
+            : ''
+        }
+
+      </div>
+
+    `;
+
+    return;
+  }
+
+  const podeEditar =
+    podeEditarEscopoAtual();
+
+  lista.innerHTML =
+    recorrentes
+      .map(
+        item => `
+
+          <article
+            class="recurring-manage-card ${
+              item.ativo
+                ? ''
+                : 'is-paused'
+            }"
+          >
+
+            <div
+              class="recurring-manage-main"
+            >
+
+              <div
+                class="recurring-manage-icon"
+              >
+                🔄
+              </div>
+
+              <div>
+
+                <div
+                  class="launch-title-line"
+                >
+
+                  <strong>
+                    ${escapeHtml(
+                      item.descricao ||
+                      'Recorrência'
+                    )}
+                  </strong>
+
+                  <span
+                    class="launch-status-badge ${
+                      item.ativo
+                        ? 'status-realizado'
+                        : 'status-cancelado'
+                    }"
+                  >
+                    ${
+                      item.ativo
+                        ? 'Ativa'
+                        : 'Pausada'
+                    }
+                  </span>
+
+                </div>
+
+                <small>
+                  Todo dia ${
+                    Number(
+                      item.dia ||
+                      1
+                    )
+                  }
+
+                  ${
+                    item.categoria
+                      ? ' · ' +
+                        escapeHtml(
+                          item.categoria
+                        )
+                      : ''
+                  }
+
+                  ${
+                    item.conta
+                      ? ' · ' +
+                        escapeHtml(
+                          item.conta
+                        )
+                      : ''
+                  }
+                </small>
+
+                ${
+                  item.formaPagamento
+                    ? `
+                      <small class="launch-meta">
+                        ${escapeHtml(
+                          item.formaPagamento
+                        )}
+                      </small>
+                    `
+                    : ''
+                }
+
+              </div>
+
+            </div>
+
+
+            <div
+              class="recurring-manage-side"
+            >
+
+              <strong class="negative">
+                ${formatMoney(
+                  item.valor
+                )}/mês
+              </strong>
+
+              ${
+                podeEditar
+                  ? `
+                    <div
+                      class="recurring-manage-actions"
+                    >
+
+                      <button
+                        type="button"
+                        class="launch-icon-btn"
+                        data-rec-action="edit"
+                        data-id="${
+                          escapeAttribute(
+                            item.id
+                          )
+                        }"
+                      >
+                        ✏️
+                      </button>
+
+                      <button
+                        type="button"
+                        class="recurring-toggle-btn"
+                        data-rec-action="toggle"
+                        data-id="${
+                          escapeAttribute(
+                            item.id
+                          )
+                        }"
+                      >
+                        ${
+                          item.ativo
+                            ? 'Pausar'
+                            : 'Ativar'
+                        }
+                      </button>
+
+                    </div>
+                  `
+                  : ''
+              }
+
+            </div>
+
+          </article>
+
+        `
+      )
+      .join('');
+
+  lista
+    .querySelectorAll(
+      '[data-rec-action="edit"]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () =>
+            abrirFormularioRecorrente(
+              button.dataset.id
+            )
+        );
+      }
+    );
+
+  lista
+    .querySelectorAll(
+      '[data-rec-action="toggle"]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () =>
+            alternarRecorrenteAtivo(
+              button.dataset.id
+            )
+        );
+      }
+    );
+}
+
+
+function abrirFormularioRecorrente(
+  id = null
+) {
+
+  abrirFormularioRecorrenteBaseV4();
+
+  const modal =
+    document.getElementById(
+      'modalRecorrente'
+    );
+
+  if (!modal) {
+    return;
+  }
+
+  modal.dataset.recorrenteId =
+    id ||
+    '';
+
+  const existente =
+    id
+      ? state.recorrentes.find(
+          item =>
+            String(
+              item.id
+            ) ===
+            String(
+              id
+            )
+        )
+      : null;
+
+  if (!existente) {
+    return;
+  }
+
+  const eyebrow =
+    modal.querySelector(
+      '.finance-modal-header .eyebrow'
+    );
+
+  const titulo =
+    modal.querySelector(
+      '.finance-modal-header h2'
+    );
+
+  if (eyebrow) {
+    eyebrow.textContent =
+      'EDITAR RECORRÊNCIA';
+  }
+
+  if (titulo) {
+    titulo.textContent =
+      'Editar conta mensal';
+  }
+
+  const atribuir =
+    (
+      idCampo,
+      valor
+    ) => {
+
+      const campo =
+        document.getElementById(
+          idCampo
+        );
+
+      if (campo) {
+        campo.value =
+          valor ??
+          '';
+      }
+    };
+
+  atribuir(
+    'recDescricao',
+    existente.descricao
+  );
+
+  atribuir(
+    'recValor',
+    existente.valor
+  );
+
+  atribuir(
+    'recDia',
+    existente.dia
+  );
+
+  atribuir(
+    'recInicio',
+    existente.dataInicio
+  );
+
+  atribuir(
+    'recFim',
+    existente.dataFim
+  );
+
+  atribuir(
+    'recCategoria',
+    existente.categoria
+  );
+
+  atribuir(
+    'recConta',
+    existente.conta
+  );
+
+  atribuir(
+    'recForma',
+    existente.formaPagamento
+  );
+
+  atribuir(
+    'recObservacao',
+    existente.observacao
+  );
+
+  const submit =
+    document
+      .getElementById(
+        'formRecorrente'
+      )
+      ?.querySelector(
+        'button[type="submit"]'
+      );
+
+  if (submit) {
+    submit.textContent =
+      'Salvar alterações';
+  }
+}
+
+
+async function salvarRecorrenteFormulario(
+  event
+) {
+
+  event.preventDefault();
+
+  const modal =
+    document.getElementById(
+      'modalRecorrente'
+    );
+
+  const id =
+    modal?.dataset
+      ?.recorrenteId ||
+    '';
+
+  const existente =
+    id
+      ? state.recorrentes.find(
+          item =>
+            String(
+              item.id
+            ) ===
+            String(
+              id
+            )
+        )
+      : null;
+
+  const erro =
+    document.getElementById(
+      'recFormErro'
+    );
+
+  const button =
+    document
+      .getElementById(
+        'formRecorrente'
+      )
+      ?.querySelector(
+        'button[type="submit"]'
+      );
+
+  try {
+
+    if (erro) {
+      erro.textContent = '';
+    }
+
+    if (button) {
+
+      button.disabled =
+        true;
+
+      button.textContent =
+        'Salvando...';
+    }
+
+    const dataInicio =
+      document.getElementById(
+        'recInicio'
+      ).value;
+
+    const dataFim =
+      document.getElementById(
+        'recFim'
+      ).value;
+
+    const dia =
+      Number(
+        document.getElementById(
+          'recDia'
+        ).value
+      );
+
+    if (
+      dia < 1 ||
+      dia > 31
+    ) {
+
+      throw new Error(
+        'Informe um vencimento entre 1 e 31.'
+      );
+    }
+
+    if (
+      dataFim &&
+      dataInicio &&
+      dataFim < dataInicio
+    ) {
+
+      throw new Error(
+        'A data final precisa ser posterior ao início.'
+      );
+    }
+
+    const dados = {
+
+      id:
+        id ||
+        undefined,
+
+      escopo:
+        state.escopo,
+
+      descricao:
+        document.getElementById(
+          'recDescricao'
+        ).value.trim(),
+
+      tipo:
+        'DESPESA',
+
+      categoria:
+        document.getElementById(
+          'recCategoria'
+        ).value,
+
+      valor:
+        Number(
+          document.getElementById(
+            'recValor'
+          ).value
+        ),
+
+      dia:
+        dia,
+
+      conta:
+        document.getElementById(
+          'recConta'
+        ).value,
+
+      formaPagamento:
+        document.getElementById(
+          'recForma'
+        )?.value ||
+        '',
+
+      cartao:
+        '',
+
+      parcelas:
+        1,
+
+      dataInicio:
+        dataInicio,
+
+      dataFim:
+        dataFim,
+
+      ativo:
+        existente
+          ? Boolean(
+              existente.ativo
+            )
+          : true,
+
+      observacao:
+        document.getElementById(
+          'recObservacao'
+        ).value.trim()
+    };
+
+    if (!dados.descricao) {
+
+      throw new Error(
+        'Informe a descrição.'
+      );
+    }
+
+    if (
+      !dados.valor ||
+      dados.valor <= 0
+    ) {
+
+      throw new Error(
+        'Informe um valor mensal válido.'
+      );
+    }
+
+    await api(
+      'salvarRecorrente',
+      dados,
+      'POST'
+    );
+
+    await carregarRecorrentesDoEscopo();
+
+    state.recorrenciasGeradas =
+      {};
+
+    await gerarRecorrentesPlanejamento(
+      true
+    );
+
+    modal?.remove();
+
+    await sincronizarFinanceiroDepoisDeAlteracao(
+      true
+    );
+
+    state.lancamentosAba =
+      'recorrentes';
+
+    selecionarAbaLancamentos(
+      'recorrentes'
+    );
+
+  } catch (error) {
+
+    console.error(
+      'Salvar recorrente:',
+      error
+    );
+
+    if (erro) {
+
+      erro.textContent =
+        error.message ||
+        'Não foi possível salvar a recorrência.';
+    }
+
+  } finally {
+
+    if (
+      button &&
+      document.body.contains(
+        button
+      )
+    ) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        id
+          ? 'Salvar alterações'
+          : 'Salvar dívida recorrente';
+    }
+  }
+}
+
+
+async function alternarRecorrenteAtivo(
+  id
+) {
+
+  if (
+    !exigirEdicaoNoFrontend()
+  ) {
+    return;
+  }
+
+  const item =
+    state.recorrentes.find(
+      x =>
+        String(
+          x.id
+        ) ===
+        String(
+          id
+        )
+    );
+
+  if (!item) {
+    return;
+  }
+
+  const novoAtivo =
+    !item.ativo;
+
+  const verbo =
+    novoAtivo
+      ? 'ativar'
+      : 'pausar';
+
+  const confirmado =
+    window.confirm(
+      `${verbo === 'ativar' ? 'Ativar' : 'Pausar'} "${item.descricao}"?`
+    );
+
+  if (!confirmado) {
+    return;
+  }
+
+  try {
+
+    await api(
+      'atualizarRecorrenteAtivo',
+      {
+        id:
+          item.id,
+
+        ativo:
+          novoAtivo
+      },
+      'POST'
+    );
+
+    await carregarRecorrentesDoEscopo();
+
+    if (
+      novoAtivo
+    ) {
+
+      state.recorrenciasGeradas =
+        {};
+
+      await gerarRecorrentesPlanejamento(
+        true
+      );
+    }
+
+    await sincronizarFinanceiroDepoisDeAlteracao(
+      true
+    );
+
+    state.lancamentosAba =
+      'recorrentes';
+
+    selecionarAbaLancamentos(
+      'recorrentes'
+    );
+
+  } catch (error) {
+
+    console.error(
+      'Atualizar recorrência:',
+      error
+    );
+
+    window.alert(
+      error.message ||
+      'Não foi possível atualizar a recorrência.'
+    );
+  }
 }

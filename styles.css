@@ -2257,3 +2257,276 @@ body.scope-readonly #quickNovoLancamento {
   }
 
 }
+
+/* =====================================================
+   V5 — PREVISTO X REALIZADO / RECORRENTES
+   ===================================================== */
+
+.launch-view-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-bottom: 14px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-2);
+}
+
+.launch-view-tabs button {
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.launch-view-tabs button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 5px 18px var(--shadow);
+}
+
+.launch-tab-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.launch-tab-count:empty {
+  display: none;
+}
+
+.launch-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.launch-title-line > strong {
+  min-width: 0;
+}
+
+.launch-status-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.status-realizado {
+  background: color-mix(in srgb, var(--positive) 16%, transparent);
+  color: var(--positive);
+}
+
+.status-pendente {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.status-hoje {
+  background: rgba(241, 178, 74, .14);
+  color: #f1b24a;
+}
+
+.status-atrasado {
+  background: color-mix(in srgb, var(--negative) 14%, transparent);
+  color: var(--negative);
+}
+
+.status-cancelado {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.launch-realize-btn,
+.recurring-toggle-btn {
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--positive) 40%, var(--border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--positive) 10%, var(--surface));
+  color: var(--positive);
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.launch-realize-btn:hover,
+.recurring-toggle-btn:hover {
+  border-color: var(--positive);
+}
+
+.status-form-grid {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface-2);
+}
+
+.recurring-manage-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: var(--surface);
+}
+
+.recurring-manage-card.is-paused {
+  opacity: .66;
+}
+
+.recurring-manage-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  min-width: 0;
+}
+
+.recurring-manage-main > div:last-child {
+  min-width: 0;
+}
+
+.recurring-manage-main small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.recurring-manage-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--primary-soft);
+  font-size: 19px;
+}
+
+.recurring-manage-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 9px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.recurring-manage-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recurring-toggle-btn {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.secondary-action,
+.launch-icon-btn,
+.objective-icon-btn,
+.objective-secondary-btn,
+.recurrence-toggle {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.secondary-action:hover,
+.launch-icon-btn:hover,
+.objective-icon-btn:hover,
+.objective-secondary-btn:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.recurrence-toggle small,
+.field-hint {
+  color: var(--muted);
+}
+
+body.scope-readonly #novoLancamentoPageBtn,
+body.scope-readonly #novoRecorrentePageBtn {
+  display: none;
+}
+
+@media (max-width: 600px) {
+
+  .launch-view-tabs {
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .launch-view-tabs button {
+    min-height: 46px;
+    padding: 7px 4px;
+    font-size: 10px;
+    line-height: 1.2;
+  }
+
+  .launch-item-v5 {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .launch-item-v5 .launch-value {
+    grid-column: 2 / 3;
+  }
+
+  .launch-item-v5 .launch-actions-icons {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-content: flex-end;
+    padding-top: 7px;
+    border-top: 1px solid var(--border);
+  }
+
+  .launch-realize-btn {
+    margin-right: auto;
+  }
+
+  .recurring-manage-card {
+    grid-template-columns: 1fr;
+  }
+
+  .recurring-manage-side {
+    align-items: stretch;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    text-align: left;
+  }
+
+  .recurring-manage-actions {
+    justify-content: flex-end;
+  }
+
+  .recurring-manage-side > strong {
+    text-align: left;
+  }
+}
