@@ -1827,6 +1827,225 @@ function configurarPrivacidadeSaldo() {
 }
 
 
+
+/* =====================================================
+   PWA / INSTALAÇÃO DO APLICATIVO
+   ===================================================== */
+
+let deferredInstallPrompt = null;
+
+
+function aplicativoEstaInstalado() {
+
+  return (
+    window.matchMedia(
+      '(display-mode: standalone)'
+    ).matches ||
+    window.navigator.standalone === true
+  );
+}
+
+
+function dispositivoIOS() {
+
+  return /iphone|ipad|ipod/i.test(
+    navigator.userAgent || ''
+  );
+}
+
+
+function atualizarInstalacaoAjustes() {
+
+  const status =
+    document.getElementById(
+      'settingsInstallStatus'
+    );
+
+  const ajuda =
+    document.getElementById(
+      'settingsInstallHelp'
+    );
+
+  const button =
+    document.getElementById(
+      'settingsInstallBtn'
+    );
+
+  if (
+    !status ||
+    !ajuda ||
+    !button
+  ) {
+    return;
+  }
+
+  if (
+    aplicativoEstaInstalado()
+  ) {
+
+    status.textContent =
+      'Instalado neste dispositivo';
+
+    ajuda.textContent =
+      'O Meu Financeiro já está abrindo como aplicativo.';
+
+    button.textContent =
+      '✓ Aplicativo instalado';
+
+    button.disabled =
+      true;
+
+    return;
+  }
+
+  button.disabled =
+    false;
+
+  if (
+    deferredInstallPrompt
+  ) {
+
+    status.textContent =
+      'Pronto para instalar';
+
+    ajuda.textContent =
+      'Instale para abrir em tela cheia e acessar pelo ícone do celular.';
+
+    button.textContent =
+      'Instalar aplicativo';
+
+    return;
+  }
+
+  if (
+    dispositivoIOS()
+  ) {
+
+    status.textContent =
+      'Disponível para iPhone e iPad';
+
+    ajuda.textContent =
+      'No Safari: toque em Compartilhar e depois em Adicionar à Tela de Início.';
+
+    button.textContent =
+      'Como instalar no iPhone';
+
+    return;
+  }
+
+  status.textContent =
+    'Instalação pelo navegador';
+
+  ajuda.textContent =
+    'Se o botão automático ainda não apareceu, use o menu do navegador e escolha Instalar aplicativo ou Adicionar à tela inicial.';
+
+  button.textContent =
+    'Como instalar';
+}
+
+
+async function instalarAplicativo() {
+
+  if (
+    aplicativoEstaInstalado()
+  ) {
+    atualizarInstalacaoAjustes();
+    return;
+  }
+
+  if (
+    deferredInstallPrompt
+  ) {
+
+    const promptAtual =
+      deferredInstallPrompt;
+
+    deferredInstallPrompt =
+      null;
+
+    try {
+
+      await promptAtual.prompt();
+      await promptAtual.userChoice;
+
+    } catch (error) {
+
+      console.warn(
+        'Instalação PWA:',
+        error
+      );
+    }
+
+    atualizarInstalacaoAjustes();
+    return;
+  }
+
+  if (
+    dispositivoIOS()
+  ) {
+
+    window.alert(
+      'Para instalar no iPhone:\n\n' +
+      '1. Abra o Meu Financeiro no Safari.\n' +
+      '2. Toque no botão Compartilhar.\n' +
+      '3. Escolha “Adicionar à Tela de Início”.\n' +
+      '4. Toque em “Adicionar”.'
+    );
+
+    return;
+  }
+
+  window.alert(
+    'Abra o menu do navegador e procure por “Instalar aplicativo” ou “Adicionar à tela inicial”.'
+  );
+}
+
+
+function configurarPWA() {
+
+  if (
+    'serviceWorker' in navigator
+  ) {
+
+    navigator.serviceWorker
+      .register(
+        './service-worker.js'
+      )
+      .catch(
+        error =>
+          console.warn(
+            'Service Worker:',
+            error
+          )
+      );
+  }
+
+  window.addEventListener(
+    'beforeinstallprompt',
+    event => {
+
+      event.preventDefault();
+
+      deferredInstallPrompt =
+        event;
+
+      atualizarInstalacaoAjustes();
+    }
+  );
+
+  window.addEventListener(
+    'appinstalled',
+    () => {
+
+      deferredInstallPrompt =
+        null;
+
+      atualizarInstalacaoAjustes();
+    }
+  );
+}
+
+
 /* =====================================================
    EVENTOS
    ===================================================== */
@@ -2016,6 +2235,9 @@ function iniciarAplicacao() {
 
   appInicializado =
     true;
+
+
+  configurarPWA();
 
 
   configurarEventos();
@@ -8177,6 +8399,62 @@ function criarPaginaAjustes() {
     </section>
 
 
+
+
+    <section
+      class="settings-card settings-install-card"
+      id="settingsInstallCard"
+    >
+
+      <div
+        class="settings-leading"
+      >
+
+        <span
+          class="settings-card-icon"
+        >
+          📲
+        </span>
+
+        <div>
+
+          <strong>
+            Instalar aplicativo
+          </strong>
+
+          <small
+            id="settingsInstallStatus"
+          >
+            Preparando instalação...
+          </small>
+
+        </div>
+
+      </div>
+
+      <div
+        class="settings-install-body"
+      >
+
+        <p
+          id="settingsInstallHelp"
+        >
+          Você pode adicionar o Meu Financeiro à tela inicial do celular.
+        </p>
+
+        <button
+          class="settings-install-button"
+          id="settingsInstallBtn"
+          type="button"
+        >
+          Instalar aplicativo
+        </button>
+
+      </div>
+
+    </section>
+
+
     <section
       class="settings-card"
     >
@@ -8199,7 +8477,7 @@ function criarPaginaAjustes() {
           </strong>
 
           <small>
-            Meu Financeiro · versão 5
+            Meu Financeiro · versão 6
           </small>
 
         </div>
@@ -8313,6 +8591,19 @@ function criarPaginaAjustes() {
 
       }
     );
+
+
+  document
+    .getElementById(
+      'settingsInstallBtn'
+    )
+    ?.addEventListener(
+      'click',
+      instalarAplicativo
+    );
+
+
+  atualizarInstalacaoAjustes();
 
 
   document
@@ -8487,6 +8778,8 @@ function preencherPaginaAjustes() {
   atualizarBotoesTemaAjustes();
 
   atualizarPermissaoVisual();
+
+  atualizarInstalacaoAjustes();
 
 }
 

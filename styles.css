@@ -2530,3 +2530,57 @@ body.scope-readonly #novoRecorrentePageBtn {
     text-align: left;
   }
 }
+
+
+/* =====================================================
+   INSTALAÇÃO PWA
+   ===================================================== */
+
+.settings-install-body {
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid #252a35;
+}
+
+.settings-install-body p {
+  margin: 0 0 12px;
+  color: #8f96a8;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.settings-install-button {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 13px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.settings-install-button:hover {
+  filter: brightness(1.06);
+}
+
+.settings-install-button:disabled {
+  background: #242a36;
+  color: #8f96a8;
+  cursor: default;
+  filter: none;
+}
+
+:root.light .settings-install-body {
+  border-top-color: #e5e7eb;
+}
+
+:root.light .settings-install-body p {
+  color: #6b7280;
+}
+
+:root.light .settings-install-button:disabled {
+  background: #e5e7eb;
+  color: #6b7280;
+}
