@@ -459,8 +459,8 @@ function renderDashboard(
     );
 
   const saldoElement =
-    document.querySelector(
-      '.balance-card strong'
+    document.getElementById(
+      'dashboardSaldo'
     );
 
   if (saldoElement) {
@@ -469,6 +469,8 @@ function renderDashboard(
       formatMoney(
         saldo
       );
+
+    aplicarPrivacidadeSaldo();
   }
 
   const balanceSpans =
@@ -1496,12 +1498,161 @@ function mostrarErro(
 
 
 /* =====================================================
+   PRIVACIDADE DO SALDO
+   ===================================================== */
+
+const SALDO_PRIVACIDADE_KEY =
+  'financeiro-saldo-oculto';
+
+
+function saldoEstaOculto() {
+
+  const salvo =
+    localStorage.getItem(
+      SALDO_PRIVACIDADE_KEY
+    );
+
+  /*
+   * Por padrão o saldo começa oculto.
+   */
+  if (salvo === null) {
+    return true;
+  }
+
+  return salvo === 'true';
+}
+
+
+function aplicarPrivacidadeSaldo() {
+
+  const saldo =
+    document.getElementById(
+      'dashboardSaldo'
+    );
+
+  const card =
+    document.querySelector(
+      '.balance-card'
+    );
+
+  const button =
+    document.getElementById(
+      'toggleBalancePrivacy'
+    );
+
+  const icon =
+    document.getElementById(
+      'balanceEyeIcon'
+    );
+
+  if (
+    !saldo ||
+    !card ||
+    !button
+  ) {
+    return;
+  }
+
+  const oculto =
+    saldoEstaOculto();
+
+  card.classList.toggle(
+    'balance-hidden',
+    oculto
+  );
+
+  if (oculto) {
+
+    if (
+      saldo.textContent !==
+      '••••••'
+    ) {
+
+      saldo.dataset.valorReal =
+        saldo.textContent;
+    }
+
+    saldo.textContent =
+      '••••••';
+
+    button.setAttribute(
+      'aria-label',
+      'Mostrar saldo'
+    );
+
+    button.title =
+      'Mostrar saldo';
+
+    if (icon) {
+      icon.textContent =
+        '👁️';
+    }
+
+    return;
+  }
+
+  if (
+    saldo.textContent ===
+      '••••••' &&
+    saldo.dataset.valorReal
+  ) {
+
+    saldo.textContent =
+      saldo.dataset.valorReal;
+  }
+
+  button.setAttribute(
+    'aria-label',
+    'Ocultar saldo'
+  );
+
+  button.title =
+    'Ocultar saldo';
+
+  if (icon) {
+    icon.textContent =
+      '🙈';
+  }
+}
+
+
+function alternarPrivacidadeSaldo() {
+
+  localStorage.setItem(
+    SALDO_PRIVACIDADE_KEY,
+    String(
+      !saldoEstaOculto()
+    )
+  );
+
+  aplicarPrivacidadeSaldo();
+}
+
+
+function configurarPrivacidadeSaldo() {
+
+  document
+    .getElementById(
+      'toggleBalancePrivacy'
+    )
+    ?.addEventListener(
+      'click',
+      alternarPrivacidadeSaldo
+    );
+
+  aplicarPrivacidadeSaldo();
+}
+
+
+/* =====================================================
    EVENTOS
    ===================================================== */
 
 function configurarEventos() {
 
   configurarTema();
+
+  configurarPrivacidadeSaldo();
 
 
   document
@@ -1723,6 +1874,74 @@ let lancamentosPage = null;
 
 
 /* =====================================================
+   NAVEGAÇÃO ENTRE TELAS
+   ===================================================== */
+
+function ocultarPaginasInternas() {
+
+  [
+    'lancamentosPage',
+    'objetivosPage',
+    'relatoriosPage',
+    'ajustesPage'
+  ].forEach(
+    id =>
+      document
+        .getElementById(id)
+        ?.classList
+        .add('hidden')
+  );
+}
+
+
+function marcarNavAtiva(index) {
+
+  const botoes =
+    document.querySelectorAll(
+      '.bottom-nav button'
+    );
+
+  botoes.forEach(
+    (button, buttonIndex) => {
+
+      button.classList.toggle(
+        'active',
+        buttonIndex === index
+      );
+
+    }
+  );
+}
+
+
+function prepararPaginaInterna(index) {
+
+  ocultarPaginasInternas();
+
+  document
+    .querySelector('.app')
+    ?.classList
+    .add('hidden');
+
+  document
+    .querySelector('.bottom-nav')
+    ?.classList
+    .remove(
+      'lancamentos-open',
+      'objetivos-open'
+    );
+
+  marcarNavAtiva(index);
+
+  window.scrollTo({
+    top: 0,
+    left: 0,
+    behavior: 'auto'
+  });
+}
+
+
+/* =====================================================
    ABRIR LANÇAMENTOS
    ===================================================== */
 
@@ -1733,50 +1952,11 @@ async function abrirPaginaLancamentos(
 
   criarPaginaLancamentos();
 
-
-  if (objetivosPage) {
-
-    objetivosPage
-      .classList
-      .add('hidden');
-
-  }
-
-
-  if (ajustesPage) {
-
-    ajustesPage
-      .classList
-      .add('hidden');
-
-  }
-
-
-  document
-    .querySelector('.app')
-    ?.classList
-    .add('hidden');
-
+  prepararPaginaInterna(1);
 
   lancamentosPage
     .classList
     .remove('hidden');
-
-
-  document
-    .querySelector('.bottom-nav')
-    ?.classList
-    .remove('objetivos-open');
-
-
-  document
-    .querySelector('.bottom-nav')
-    ?.classList
-    .add('lancamentos-open');
-
-
-  marcarNavAtiva(1);
-
 
   /*
    * Só consulta a API na primeira carga.
@@ -1784,20 +1964,13 @@ async function abrirPaginaLancamentos(
    */
   await atualizarListaLancamentosPage();
 
-
   if (abrirFormulario) {
-
     abrirFormularioLancamento();
-
   }
-
 
   if (abrirRecorrente) {
-
     abrirFormularioRecorrente();
-
   }
-
 }
 
 
@@ -1807,29 +1980,12 @@ async function abrirPaginaLancamentos(
 
 function voltarInicio() {
 
-  if (lancamentosPage) {
-
-    lancamentosPage
-      .classList
-      .add('hidden');
-
-  }
-
-
-  if (objetivosPage) {
-
-    objetivosPage
-      .classList
-      .add('hidden');
-
-  }
-
+  ocultarPaginasInternas();
 
   document
     .querySelector('.app')
     ?.classList
     .remove('hidden');
-
 
   document
     .querySelector('.bottom-nav')
@@ -1839,18 +1995,19 @@ function voltarInicio() {
       'objetivos-open'
     );
 
-
   marcarNavAtiva(0);
 
+  window.scrollTo({
+    top: 0,
+    left: 0,
+    behavior: 'auto'
+  });
 
   if (state.dashboard) {
-
     renderDashboard(
       state.dashboard
     );
-
   }
-
 }
 
 
@@ -4660,48 +4817,13 @@ async function abrirPaginaObjetivos() {
 
   criarPaginaObjetivos();
 
-
-  if (lancamentosPage) {
-
-    lancamentosPage
-      .classList
-      .add('hidden');
-
-  }
-
-
-  document
-    .querySelector('.app')
-    ?.classList
-    .add('hidden');
-
+  prepararPaginaInterna(2);
 
   objetivosPage
     .classList
     .remove('hidden');
 
-
-  document
-    .querySelector('.bottom-nav')
-    ?.classList
-    .remove(
-      'lancamentos-open'
-    );
-
-
-  document
-    .querySelector('.bottom-nav')
-    ?.classList
-    .add(
-      'objetivos-open'
-    );
-
-
-  marcarNavAtiva(2);
-
-
   renderPaginaObjetivos();
-
 }
 
 
@@ -6320,45 +6442,11 @@ async function abrirPaginaRelatorios() {
 
   criarPaginaRelatorios();
 
-
-  if (lancamentosPage) {
-
-    lancamentosPage
-      .classList
-      .add(
-        'hidden'
-      );
-
-  }
-
-
-  if (objetivosPage) {
-
-    objetivosPage
-      .classList
-      .add(
-        'hidden'
-      );
-
-  }
-
-
-  document
-    .querySelector('.app')
-    ?.classList
-    .add(
-      'hidden'
-    );
-
+  prepararPaginaInterna(3);
 
   relatoriosPage
     .classList
-    .remove(
-      'hidden'
-    );
-
-
-  marcarNavAtiva(3);
+    .remove('hidden');
 
 
   /*
@@ -7349,56 +7437,11 @@ function abrirPaginaAjustes() {
 
   criarPaginaAjustes();
 
-
-  if (lancamentosPage) {
-
-    lancamentosPage
-      .classList
-      .add(
-        'hidden'
-      );
-
-  }
-
-
-  if (objetivosPage) {
-
-    objetivosPage
-      .classList
-      .add(
-        'hidden'
-      );
-
-  }
-
-
-  if (relatoriosPage) {
-
-    relatoriosPage
-      .classList
-      .add(
-        'hidden'
-      );
-
-  }
-
-
-  document
-    .querySelector('.app')
-    ?.classList
-    .add(
-      'hidden'
-    );
-
+  prepararPaginaInterna(4);
 
   ajustesPage
     .classList
-    .remove(
-      'hidden'
-    );
-
-
-  marcarNavAtiva(4);
+    .remove('hidden');
 
 
   preencherPaginaAjustes();

@@ -268,9 +268,45 @@ button {
 }
 
 .balance-card p {
-  margin: 0 0 7px;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.balance-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+
+.balance-privacy-btn {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  padding: 0;
+  border: 1px solid rgba(128,102,255,.22);
+  border-radius: 12px;
+  background: rgba(128,102,255,.10);
+  color: var(--text);
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.balance-privacy-btn:hover {
+  background: rgba(128,102,255,.18);
+}
+
+.balance-privacy-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.balance-card.balance-hidden > strong {
+  letter-spacing: .08em;
 }
 
 .balance-card > strong {
