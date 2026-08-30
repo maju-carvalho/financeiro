@@ -41,7 +41,11 @@ const state = {
 
   categorias: [],
 
+  formasPagamento: [],
+
   recorrentes: [],
+
+  cadastrosGerenciamento: null,
 
   /*
    * Cache mantido durante a sessão.
@@ -339,6 +343,10 @@ async function carregarAplicacao() {
       data.contas ||
       [];
 
+    state.formasPagamento =
+      data.formasPagamento ||
+      [];
+
     state.objetivos =
       data.objetivos ||
       [];
@@ -355,6 +363,8 @@ async function carregarAplicacao() {
       state.user.nome;
 
     atualizarInterfaceUsuario();
+
+    atualizarPermissaoVisual();
 
     await carregarDashboard();
 
@@ -937,6 +947,131 @@ function atualizarSeletorEscopo() {
 }
 
 
+
+function nivelEscopoAtual() {
+
+  const escopos =
+    state.initialData?.escopos ||
+    [];
+
+  const atual =
+    escopos.find(
+      item =>
+        String(
+          item.nome
+        ) ===
+        String(
+          state.escopo
+        )
+    );
+
+  if (atual?.nivel) {
+    return String(
+      atual.nivel
+    ).toUpperCase();
+  }
+
+  if (
+    state.escopo ===
+      state.user?.nome ||
+    state.escopo ===
+      'CASAL'
+  ) {
+    return 'EDITAR';
+  }
+
+  return '';
+}
+
+
+function podeEditarEscopoAtual() {
+
+  return (
+    nivelEscopoAtual() ===
+    'EDITAR'
+  );
+}
+
+
+function exigirEdicaoNoFrontend() {
+
+  if (
+    podeEditarEscopoAtual()
+  ) {
+    return true;
+  }
+
+  window.alert(
+    'Este espaço está disponível somente para visualização.'
+  );
+
+  return false;
+}
+
+
+function atualizarPermissaoVisual() {
+
+  document.body
+    .classList
+    .toggle(
+      'scope-readonly',
+      !podeEditarEscopoAtual()
+    );
+
+  const select =
+    document.getElementById(
+      'settingsScopeSelect'
+    );
+
+  if (select) {
+    select.dataset.nivel =
+      nivelEscopoAtual();
+  }
+}
+
+
+async function carregarCadastrosDoEscopo(
+  incluirInativas = false
+) {
+
+  if (!state.escopo) {
+    return null;
+  }
+
+  const dados =
+    await api(
+      'obterCadastros',
+      {
+        escopo:
+          state.escopo,
+
+        incluirInativas:
+          incluirInativas
+            ? 'true'
+            : 'false'
+      }
+    );
+
+  if (!incluirInativas) {
+
+    state.contas =
+      dados.contas ||
+      [];
+
+    state.categorias =
+      dados.categorias ||
+      [];
+
+    state.formasPagamento =
+      dados.formasPagamento ||
+      [];
+
+  }
+
+  return dados;
+}
+
+
 async function trocarEscopo(
   escopo
 ) {
@@ -968,6 +1103,13 @@ async function trocarEscopo(
 
   state.dashboardCarregado =
     false;
+
+
+  await carregarCadastrosDoEscopo(
+    false
+  );
+
+  atualizarPermissaoVisual();
 
 
   await Promise.all([
@@ -1374,6 +1516,24 @@ function formatDate(
 function iconeCategoria(
   categoria
 ) {
+
+  const cadastrada =
+    state.categorias
+      .find(
+        item =>
+          String(
+            item.nome || ''
+          ) ===
+          String(
+            categoria || ''
+          )
+      );
+
+  if (
+    cadastrada?.icone
+  ) {
+    return cadastrada.icone;
+  }
 
   const mapa = {
 
@@ -3002,6 +3162,12 @@ function abrirFormularioLancamento(
   id = null
 ) {
 
+  if (
+    !exigirEdicaoNoFrontend()
+  ) {
+    return;
+  }
+
   const modal =
     document.getElementById(
       'modalLancamento'
@@ -3240,26 +3406,6 @@ function abrirFormularioLancamento(
 
               <option value="">
                 Não informado
-              </option>
-
-              <option value="Pix">
-                Pix
-              </option>
-
-              <option value="Débito">
-                Débito
-              </option>
-
-              <option value="Crédito">
-                Crédito
-              </option>
-
-              <option value="Dinheiro">
-                Dinheiro
-              </option>
-
-              <option value="Transferência">
-                Transferência
               </option>
 
             </select>
@@ -3603,6 +3749,36 @@ function preencherFormularioLancamento(
         }
       );
 
+
+    if (
+      existente?.conta &&
+      !state.contas.some(
+        conta =>
+          conta.nome ===
+          existente.conta
+      )
+    ) {
+
+      const antiga =
+        document.createElement(
+          'option'
+        );
+
+      antiga.value =
+        existente.conta;
+
+      antiga.textContent =
+        `${existente.conta} · inativa`;
+
+      antiga.selected =
+        true;
+
+      contaSelect.appendChild(
+        antiga
+      );
+
+    }
+
   }
 
 
@@ -3612,11 +3788,64 @@ function preencherFormularioLancamento(
     );
 
 
-  if (forma && existente) {
+  if (forma) {
 
-    forma.value =
-      existente.formaPagamento ||
-      '';
+    state.formasPagamento
+      .forEach(
+        item => {
+
+          const option =
+            document.createElement(
+              'option'
+            );
+
+          option.value =
+            item.nome;
+
+          option.textContent =
+            item.nome;
+
+          forma.appendChild(
+            option
+          );
+
+        }
+      );
+
+    if (
+      existente?.formaPagamento &&
+      !state.formasPagamento.some(
+        item =>
+          item.nome ===
+          existente.formaPagamento
+      )
+    ) {
+
+      const antiga =
+        document.createElement(
+          'option'
+        );
+
+      antiga.value =
+        existente.formaPagamento;
+
+      antiga.textContent =
+        `${existente.formaPagamento} · inativa`;
+
+      forma.appendChild(
+        antiga
+      );
+
+    }
+
+
+    if (existente) {
+
+      forma.value =
+        existente.formaPagamento ||
+        '';
+
+    }
 
   }
 
@@ -3677,7 +3906,7 @@ function preencherCategoriasFormulario(
 
 
         option.textContent =
-          categoria.nome;
+          `${categoria.icone || ''} ${categoria.nome}`.trim();
 
 
         if (
@@ -3697,6 +3926,36 @@ function preencherCategoriasFormulario(
 
       }
     );
+
+
+  if (
+    categoriaSelecionada &&
+    !categorias.some(
+      categoria =>
+        categoria.nome ===
+        categoriaSelecionada
+    )
+  ) {
+
+    const antiga =
+      document.createElement(
+        'option'
+      );
+
+    antiga.value =
+      categoriaSelecionada;
+
+    antiga.textContent =
+      `${categoriaSelecionada} · inativa`;
+
+    antiga.selected =
+      true;
+
+    select.appendChild(
+      antiga
+    );
+
+  }
 
 }
 
@@ -4189,6 +4448,12 @@ function fecharModalLancamento() {
 
 function abrirFormularioRecorrente() {
 
+  if (
+    !exigirEdicaoNoFrontend()
+  ) {
+    return;
+  }
+
   const existente =
     document.getElementById(
       'modalRecorrente'
@@ -4382,6 +4647,22 @@ function abrirFormularioRecorrente() {
 
 
         <label>
+          Forma de pagamento
+
+          <select
+            id="recForma"
+          >
+
+            <option value="">
+              Não informado
+            </option>
+
+          </select>
+
+        </label>
+
+
+        <label>
           Observação
 
           <textarea
@@ -4480,6 +4761,37 @@ function abrirFormularioRecorrente() {
             : conta.nome;
 
         contaSelect
+          ?.appendChild(
+            option
+          );
+
+      }
+    );
+
+
+
+  const formaSelect =
+    document.getElementById(
+      'recForma'
+    );
+
+
+  state.formasPagamento
+    .forEach(
+      item => {
+
+        const option =
+          document.createElement(
+            'option'
+          );
+
+        option.value =
+          item.nome;
+
+        option.textContent =
+          item.nome;
+
+        formaSelect
           ?.appendChild(
             option
           );
@@ -4646,6 +4958,9 @@ async function salvarRecorrenteFormulario(
         ).value,
 
       formaPagamento:
+        document.getElementById(
+          'recForma'
+        )?.value ||
         '',
 
       cartao:
@@ -4730,7 +5045,11 @@ async function salvarRecorrenteFormulario(
 
     state.recorrentes =
       await api(
-        'listarRecorrentes'
+        'listarRecorrentes',
+        {
+          escopo:
+            state.escopo
+        }
       );
 
 
@@ -4978,7 +5297,11 @@ async function carregarObjetivos() {
 
   const data =
     await api(
-      'listarObjetivos'
+      'listarObjetivos',
+      {
+        escopo:
+          state.escopo
+      }
     );
 
 
@@ -5459,6 +5782,12 @@ function renderPaginaObjetivos() {
 function abrirFormularioObjetivo(
   id = null
 ) {
+
+  if (
+    !exigirEdicaoNoFrontend()
+  ) {
+    return;
+  }
 
   const existente =
     id
@@ -7422,6 +7751,7 @@ function renderBarrasRelatorio(
 
 }
 
+
 /* =====================================================
    PÁGINA DE AJUSTES
    ===================================================== */
@@ -7433,7 +7763,7 @@ let ajustesPage = null;
    ABRIR AJUSTES
    ----------------------------------------------------- */
 
-function abrirPaginaAjustes() {
+async function abrirPaginaAjustes() {
 
   criarPaginaAjustes();
 
@@ -7443,8 +7773,9 @@ function abrirPaginaAjustes() {
     .classList
     .remove('hidden');
 
-
   preencherPaginaAjustes();
+
+  await carregarDadosAjustes();
 
 }
 
@@ -7491,7 +7822,7 @@ function criarPaginaAjustes() {
         </h1>
 
         <p class="finance-page-subtitle">
-          Personalize o aplicativo do seu jeito
+          Personalize seu financeiro e sua privacidade
         </p>
 
       </div>
@@ -7510,7 +7841,7 @@ function criarPaginaAjustes() {
 
 
     <section
-      class="settings-card"
+      class="settings-card settings-profile-card"
     >
 
       <div
@@ -7631,7 +7962,7 @@ function criarPaginaAjustes() {
           </strong>
 
           <small>
-            Escolha de qual espaço você quer ver os dados
+            Igor, Maju ou o financeiro do casal
           </small>
 
         </div>
@@ -7653,6 +7984,167 @@ function criarPaginaAjustes() {
         ></select>
 
       </label>
+
+
+      <div
+        id="settingsScopeAccess"
+        class="settings-access-note"
+      ></div>
+
+    </section>
+
+
+    <section
+      class="settings-card"
+      id="settingsPrivacyCard"
+    >
+
+      <div
+        class="settings-leading"
+      >
+
+        <span
+          class="settings-card-icon"
+        >
+          🔐
+        </span>
+
+
+        <div>
+
+          <strong>
+            Privacidade do meu financeiro
+          </strong>
+
+          <small>
+            Você decide o que a outra pessoa pode fazer no seu espaço pessoal
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div
+        id="settingsPrivacyContent"
+        class="settings-dynamic-content"
+      >
+
+        <div class="settings-loading">
+          Carregando privacidade...
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <section
+      class="settings-card"
+    >
+
+      <div
+        class="settings-leading"
+      >
+
+        <span
+          class="settings-card-icon"
+        >
+          🧩
+        </span>
+
+
+        <div>
+
+          <strong>
+            Cadastros financeiros
+          </strong>
+
+          <small>
+            Personalize contas, categorias e formas de pagamento do espaço atual
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="settings-manager-list"
+      >
+
+        <button
+          type="button"
+          class="settings-manager-item"
+          data-cadastro="contas"
+        >
+
+          <span class="settings-manager-icon">
+            🏦
+          </span>
+
+          <span class="settings-manager-copy">
+            <b>Contas</b>
+            <small id="settingsContasResumo">
+              Carregando...
+            </small>
+          </span>
+
+          <span class="settings-manager-arrow">
+            ›
+          </span>
+
+        </button>
+
+
+        <button
+          type="button"
+          class="settings-manager-item"
+          data-cadastro="categorias"
+        >
+
+          <span class="settings-manager-icon">
+            🏷️
+          </span>
+
+          <span class="settings-manager-copy">
+            <b>Categorias</b>
+            <small id="settingsCategoriasResumo">
+              Carregando...
+            </small>
+          </span>
+
+          <span class="settings-manager-arrow">
+            ›
+          </span>
+
+        </button>
+
+
+        <button
+          type="button"
+          class="settings-manager-item"
+          data-cadastro="formas"
+        >
+
+          <span class="settings-manager-icon">
+            💳
+          </span>
+
+          <span class="settings-manager-copy">
+            <b>Formas de pagamento</b>
+            <small id="settingsFormasResumo">
+              Carregando...
+            </small>
+          </span>
+
+          <span class="settings-manager-arrow">
+            ›
+          </span>
+
+        </button>
+
+      </div>
 
     </section>
 
@@ -7679,7 +8171,7 @@ function criarPaginaAjustes() {
           </strong>
 
           <small>
-            Meu Financeiro · versão 1.0
+            Meu Financeiro · versão 4
           </small>
 
         </div>
@@ -7692,7 +8184,7 @@ function criarPaginaAjustes() {
       >
 
         <span>
-          Seus dados financeiros continuam vinculados à sua planilha.
+          Seus dados continuam vinculados à sua planilha e as permissões são validadas pela API.
         </span>
 
       </div>
@@ -7762,10 +8254,36 @@ function criarPaginaAjustes() {
     )
     ?.addEventListener(
       'change',
-      event =>
-        trocarEscopo(
+      async event => {
+
+        await trocarEscopo(
           event.target.value
-        )
+        );
+
+        preencherPaginaAjustes();
+
+        await carregarDadosAjustes();
+
+      }
+    );
+
+
+  ajustesPage
+    .querySelectorAll(
+      '[data-cadastro]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () =>
+            abrirGerenciadorCadastro(
+              button.dataset.cadastro
+            )
+        );
+
+      }
     );
 
 
@@ -7837,23 +8355,59 @@ function preencherPaginaAjustes() {
     select.innerHTML =
       escopos
         .map(
-          escopo => `
+          escopo => {
 
-            <option
-              value="${
-                escapeAttribute(
-                  escopo.nome
-                )
-              }"
-            >
-              ${
-                escapeHtml(
-                  escopo.nome
-                )
-              }
-            </option>
+            const nome =
+              String(
+                escopo.nome || ''
+              );
 
-          `
+            let rotulo =
+              nome;
+
+            if (
+              nome === 'CASAL'
+            ) {
+              rotulo =
+                '❤️ Casal';
+            } else if (
+              nome ===
+              state.user?.nome
+            ) {
+              rotulo =
+                '👤 Meu financeiro';
+            } else {
+              rotulo =
+                `👤 ${nome}`;
+            }
+
+            if (
+              String(
+                escopo.nivel || ''
+              ).toUpperCase() ===
+              'VISUALIZAR'
+            ) {
+              rotulo +=
+                ' · somente leitura';
+            }
+
+            return `
+              <option
+                value="${
+                  escapeAttribute(
+                    nome
+                  )
+                }"
+              >
+                ${
+                  escapeHtml(
+                    rotulo
+                  )
+                }
+              </option>
+            `;
+
+          }
         )
         .join('');
 
@@ -7870,7 +8424,1637 @@ function preencherPaginaAjustes() {
   }
 
 
+  const access =
+    document.getElementById(
+      'settingsScopeAccess'
+    );
+
+
+  if (access) {
+
+    const nivel =
+      nivelEscopoAtual();
+
+    const nome =
+      state.escopo === 'CASAL'
+        ? 'Casal'
+        : state.escopo;
+
+    access.innerHTML =
+      nivel === 'EDITAR'
+        ? `
+          <span class="access-pill access-edit">
+            ✓ Você pode visualizar e editar ${escapeHtml(nome || '')}
+          </span>
+        `
+        : `
+          <span class="access-pill access-view">
+            👁 Você pode somente visualizar ${escapeHtml(nome || '')}
+          </span>
+        `;
+
+  }
+
+
   atualizarBotoesTemaAjustes();
+
+  atualizarPermissaoVisual();
+
+}
+
+
+/* -----------------------------------------------------
+   DADOS DINÂMICOS
+   ----------------------------------------------------- */
+
+async function carregarDadosAjustes() {
+
+  if (!ajustesPage) {
+    return;
+  }
+
+  try {
+
+    const [
+      compartilhamento,
+      cadastros
+    ] =
+      await Promise.all([
+        api(
+          'obterMeuCompartilhamento'
+        ),
+        carregarCadastrosDoEscopo(
+          true
+        )
+      ]);
+
+
+    if (
+      state.initialData
+    ) {
+      state.initialData.compartilhamento =
+        compartilhamento;
+    }
+
+
+    state.cadastrosGerenciamento =
+      cadastros;
+
+
+    renderPrivacidadeAjustes(
+      compartilhamento
+    );
+
+
+    renderResumoCadastrosAjustes(
+      cadastros
+    );
+
+  } catch (error) {
+
+    console.error(
+      'Ajustes:',
+      error
+    );
+
+    const privacy =
+      document.getElementById(
+        'settingsPrivacyContent'
+      );
+
+    if (privacy) {
+
+      privacy.innerHTML = `
+        <div class="form-error">
+          ${
+            escapeHtml(
+              error.message ||
+              'Não foi possível carregar os ajustes.'
+            )
+          }
+        </div>
+      `;
+
+    }
+
+  }
+
+}
+
+
+/* -----------------------------------------------------
+   PRIVACIDADE
+   ----------------------------------------------------- */
+
+function descricaoNivelCompartilhamento(
+  nivel
+) {
+
+  const n =
+    String(
+      nivel || 'NENHUM'
+    ).toUpperCase();
+
+  if (n === 'EDITAR') {
+    return 'visualizar e editar';
+  }
+
+  if (n === 'VISUALIZAR') {
+    return 'somente visualizar';
+  }
+
+  return 'sem acesso';
+}
+
+
+function renderPrivacidadeAjustes(
+  compartilhamento
+) {
+
+  const container =
+    document.getElementById(
+      'settingsPrivacyContent'
+    );
+
+
+  if (!container) {
+    return;
+  }
+
+
+  const c =
+    compartilhamento?.conjuge;
+
+
+  if (!c) {
+
+    container.innerHTML = `
+      <div class="settings-empty-note">
+        Cadastre os dois usuários ativos na aba “Usuários” para configurar a privacidade.
+      </div>
+    `;
+
+    return;
+  }
+
+
+  const nivel =
+    String(
+      compartilhamento.nivelConcedido ||
+      compartilhamento.nivel ||
+      'NENHUM'
+    ).toUpperCase();
+
+
+  const recebido =
+    String(
+      compartilhamento.nivelRecebido ||
+      'NENHUM'
+    ).toUpperCase();
+
+
+  container.innerHTML = `
+
+    <label
+      class="settings-field"
+    >
+
+      <span>
+        O que ${escapeHtml(c.nome || 'a outra pessoa')} pode fazer no meu financeiro pessoal?
+      </span>
+
+
+      <select
+        id="settingsShareLevel"
+      >
+
+        <option
+          value="NENHUM"
+          ${
+            nivel === 'NENHUM'
+              ? 'selected'
+              : ''
+          }
+        >
+          🔒 Privado
+        </option>
+
+        <option
+          value="VISUALIZAR"
+          ${
+            nivel === 'VISUALIZAR'
+              ? 'selected'
+              : ''
+          }
+        >
+          👁 Somente visualizar
+        </option>
+
+        <option
+          value="EDITAR"
+          ${
+            nivel === 'EDITAR'
+              ? 'selected'
+              : ''
+          }
+        >
+          ✏️ Visualizar e editar
+        </option>
+
+      </select>
+
+    </label>
+
+
+    <button
+      type="button"
+      class="settings-save-btn"
+      id="settingsSavePrivacy"
+    >
+      Salvar privacidade
+    </button>
+
+
+    <div
+      class="settings-received-access"
+    >
+      <b>
+        Acesso que ${escapeHtml(c.nome || 'a outra pessoa')} concedeu a você
+      </b>
+
+      <span>
+        ${escapeHtml(
+          descricaoNivelCompartilhamento(
+            recebido
+          )
+        )}
+      </span>
+    </div>
+
+  `;
+
+
+  document
+    .getElementById(
+      'settingsSavePrivacy'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        salvarPrivacidadeAjustes(
+          c.email
+        )
+    );
+
+}
+
+
+async function salvarPrivacidadeAjustes(
+  email
+) {
+
+  const select =
+    document.getElementById(
+      'settingsShareLevel'
+    );
+
+
+  if (!select) {
+    return;
+  }
+
+
+  const button =
+    document.getElementById(
+      'settingsSavePrivacy'
+    );
+
+
+  try {
+
+    if (button) {
+
+      button.disabled =
+        true;
+
+      button.textContent =
+        'Salvando...';
+
+    }
+
+
+    await api(
+      'salvarCompartilhamento',
+      {
+        conjugeEmail:
+          email,
+
+        nivel:
+          select.value
+      },
+      'POST'
+    );
+
+
+    const atualizado =
+      await api(
+        'obterMeuCompartilhamento'
+      );
+
+
+    if (
+      state.initialData
+    ) {
+      state.initialData.compartilhamento =
+        atualizado;
+    }
+
+
+    renderPrivacidadeAjustes(
+      atualizado
+    );
+
+  } catch (error) {
+
+    window.alert(
+      error.message ||
+      'Não foi possível salvar a privacidade.'
+    );
+
+  } finally {
+
+    if (
+      button &&
+      document.body.contains(
+        button
+      )
+    ) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        'Salvar privacidade';
+
+    }
+
+  }
+
+}
+
+
+/* -----------------------------------------------------
+   RESUMO DOS CADASTROS
+   ----------------------------------------------------- */
+
+function renderResumoCadastrosAjustes(
+  cadastros
+) {
+
+  if (!cadastros) {
+    return;
+  }
+
+
+  const resumo = (
+    id,
+    lista
+  ) => {
+
+    const element =
+      document.getElementById(
+        id
+      );
+
+
+    if (!element) {
+      return;
+    }
+
+
+    const todos =
+      Array.isArray(lista)
+        ? lista
+        : [];
+
+
+    const ativos =
+      todos.filter(
+        item =>
+          item.ativa !== false
+      ).length;
+
+
+    element.textContent =
+      `${ativos} ativo${
+        ativos === 1
+          ? ''
+          : 's'
+      } · ${
+        cadastros.podeEditar
+          ? 'toque para gerenciar'
+          : 'somente visualização'
+      }`;
+
+  };
+
+
+  resumo(
+    'settingsContasResumo',
+    cadastros.contas
+  );
+
+
+  resumo(
+    'settingsCategoriasResumo',
+    cadastros.categorias
+  );
+
+
+  resumo(
+    'settingsFormasResumo',
+    cadastros.formasPagamento
+  );
+
+}
+
+
+/* -----------------------------------------------------
+   GERENCIADOR DE CADASTROS
+   ----------------------------------------------------- */
+
+function tituloCadastro(
+  tipo
+) {
+
+  if (tipo === 'contas') {
+    return 'Contas';
+  }
+
+  if (tipo === 'categorias') {
+    return 'Categorias';
+  }
+
+  return 'Formas de pagamento';
+}
+
+
+function iconeCadastro(
+  tipo
+) {
+
+  if (tipo === 'contas') {
+    return '🏦';
+  }
+
+  if (tipo === 'categorias') {
+    return '🏷️';
+  }
+
+  return '💳';
+}
+
+
+function listaCadastroAtual(
+  tipo
+) {
+
+  const c =
+    state.cadastrosGerenciamento ||
+    {};
+
+  if (tipo === 'contas') {
+    return c.contas || [];
+  }
+
+  if (tipo === 'categorias') {
+    return c.categorias || [];
+  }
+
+  return c.formasPagamento || [];
+}
+
+
+function garantirModalCadastroAjustes() {
+
+  let modal =
+    document.getElementById(
+      'modalCadastroAjustes'
+    );
+
+
+  if (modal) {
+    return modal;
+  }
+
+
+  modal =
+    document.createElement(
+      'div'
+    );
+
+
+  modal.id =
+    'modalCadastroAjustes';
+
+
+  modal.className =
+    'finance-modal hidden';
+
+
+  document
+    .getElementById(
+      'app'
+    )
+    ?.appendChild(
+      modal
+    );
+
+
+  return modal;
+}
+
+
+async function abrirGerenciadorCadastro(
+  tipo
+) {
+
+  const modal =
+    garantirModalCadastroAjustes();
+
+
+  try {
+
+    state.cadastrosGerenciamento =
+      await carregarCadastrosDoEscopo(
+        true
+      );
+
+  } catch (error) {
+
+    window.alert(
+      error.message ||
+      'Não foi possível carregar os cadastros.'
+    );
+
+    return;
+  }
+
+
+  const lista =
+    listaCadastroAtual(
+      tipo
+    );
+
+
+  const podeEditar =
+    Boolean(
+      state.cadastrosGerenciamento
+        ?.podeEditar
+    );
+
+
+  modal.innerHTML = `
+
+    <div
+      class="finance-modal-backdrop"
+      data-close-cadastro
+    ></div>
+
+
+    <div
+      class="finance-modal-card settings-manager-modal"
+    >
+
+      <header
+        class="finance-modal-header"
+      >
+
+        <div>
+
+          <p class="eyebrow">
+            ${
+              escapeHtml(
+                state.escopo === 'CASAL'
+                  ? 'ESPAÇO CASAL'
+                  : state.escopo
+              )
+            }
+          </p>
+
+          <h2>
+            ${iconeCadastro(tipo)}
+            ${escapeHtml(
+              tituloCadastro(tipo)
+            )}
+          </h2>
+
+        </div>
+
+
+        <button
+          type="button"
+          class="modal-close"
+          data-close-cadastro
+        >
+          ×
+        </button>
+
+      </header>
+
+
+      ${
+        podeEditar
+          ? `
+            <button
+              type="button"
+              class="settings-add-btn"
+              id="settingsAddCadastro"
+            >
+              ＋ Adicionar
+            </button>
+          `
+          : `
+            <div class="settings-readonly-banner">
+              👁 Você pode consultar este cadastro, mas não pode alterá-lo.
+            </div>
+          `
+      }
+
+
+      <div
+        class="settings-cadastro-list"
+      >
+
+        ${
+          lista.length
+            ? lista
+                .map(
+                  item => {
+
+                    let titulo =
+                      item.nome ||
+                      'Sem nome';
+
+                    let detalhe =
+                      '';
+
+                    if (
+                      tipo === 'contas'
+                    ) {
+                      detalhe =
+                        [
+                          item.banco,
+                          item.tipo
+                        ]
+                          .filter(Boolean)
+                          .join(' · ');
+                    }
+
+                    if (
+                      tipo === 'categorias'
+                    ) {
+                      titulo =
+                        `${item.icone || '🏷️'} ${titulo}`;
+
+                      detalhe =
+                        item.tipo === 'RECEITA'
+                          ? 'Receita'
+                          : 'Despesa';
+                    }
+
+                    return `
+                      <div
+                        class="settings-cadastro-item ${
+                          item.ativa === false
+                            ? 'inactive'
+                            : ''
+                        }"
+                      >
+
+                        <div
+                          class="settings-cadastro-info"
+                        >
+                          <b>
+                            ${escapeHtml(
+                              titulo
+                            )}
+                          </b>
+
+                          <small>
+                            ${
+                              escapeHtml(
+                                detalhe ||
+                                (
+                                  item.ativa === false
+                                    ? 'Inativo'
+                                    : 'Ativo'
+                                )
+                              )
+                            }
+                          </small>
+                        </div>
+
+
+                        <div
+                          class="settings-cadastro-actions"
+                        >
+
+                          <span
+                            class="settings-status ${
+                              item.ativa === false
+                                ? 'off'
+                                : 'on'
+                            }"
+                          >
+                            ${
+                              item.ativa === false
+                                ? 'Inativo'
+                                : 'Ativo'
+                            }
+                          </span>
+
+
+                          ${
+                            podeEditar
+                              ? `
+                                <button
+                                  type="button"
+                                  class="settings-mini-btn"
+                                  data-edit-cadastro="${
+                                    escapeAttribute(
+                                      item.id
+                                    )
+                                  }"
+                                >
+                                  ✏️
+                                </button>
+
+                                <button
+                                  type="button"
+                                  class="settings-mini-btn ${
+                                    item.ativa === false
+                                      ? ''
+                                      : 'danger'
+                                  }"
+                                  data-toggle-cadastro="${
+                                    escapeAttribute(
+                                      item.id
+                                    )
+                                  }"
+                                >
+                                  ${
+                                    item.ativa === false
+                                      ? '↩'
+                                      : '⏸'
+                                  }
+                                </button>
+                              `
+                              : ''
+                          }
+
+                        </div>
+
+                      </div>
+                    `;
+
+                  }
+                )
+                .join('')
+            : `
+              <div class="launch-empty">
+                <span>${iconeCadastro(tipo)}</span>
+                <strong>Nenhum cadastro ainda</strong>
+                <small>Adicione o primeiro item deste espaço.</small>
+              </div>
+            `
+        }
+
+      </div>
+
+    </div>
+
+  `;
+
+
+  modal
+    .classList
+    .remove('hidden');
+
+
+  modal
+    .querySelectorAll(
+      '[data-close-cadastro]'
+    )
+    .forEach(
+      el => {
+
+        el.addEventListener(
+          'click',
+          fecharModalCadastroAjustes
+        );
+
+      }
+    );
+
+
+  document
+    .getElementById(
+      'settingsAddCadastro'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        abrirFormularioCadastroAjustes(
+          tipo
+        )
+    );
+
+
+  modal
+    .querySelectorAll(
+      '[data-edit-cadastro]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () =>
+            abrirFormularioCadastroAjustes(
+              tipo,
+              button.dataset.editCadastro
+            )
+        );
+
+      }
+    );
+
+
+  modal
+    .querySelectorAll(
+      '[data-toggle-cadastro]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () =>
+            alternarCadastroAjustes(
+              tipo,
+              button.dataset.toggleCadastro
+            )
+        );
+
+      }
+    );
+
+}
+
+
+function fecharModalCadastroAjustes() {
+
+  document
+    .getElementById(
+      'modalCadastroAjustes'
+    )
+    ?.classList
+    .add('hidden');
+
+}
+
+
+/* -----------------------------------------------------
+   FORMULÁRIO DE CADASTRO
+   ----------------------------------------------------- */
+
+function abrirFormularioCadastroAjustes(
+  tipo,
+  id = null
+) {
+
+  if (
+    !state.cadastrosGerenciamento
+      ?.podeEditar
+  ) {
+
+    window.alert(
+      'Você não tem permissão para editar este espaço.'
+    );
+
+    return;
+  }
+
+
+  const modal =
+    garantirModalCadastroAjustes();
+
+
+  const item =
+    id
+      ? listaCadastroAtual(
+          tipo
+        ).find(
+          x =>
+            String(x.id) ===
+            String(id)
+        )
+      : null;
+
+
+  let campos =
+    '';
+
+
+  if (
+    tipo === 'contas'
+  ) {
+
+    campos = `
+
+      <label>
+        Nome da conta
+
+        <input
+          id="cadastroNome"
+          type="text"
+          placeholder="Ex.: Nubank"
+          value="${
+            escapeAttribute(
+              item?.nome ||
+              ''
+            )
+          }"
+          required
+        >
+      </label>
+
+
+      <div class="form-grid">
+
+        <label>
+          Banco / instituição
+
+          <input
+            id="cadastroBanco"
+            type="text"
+            placeholder="Ex.: Nubank, Itaú, Mercado Pago"
+            value="${
+              escapeAttribute(
+                item?.banco ||
+                ''
+              )
+            }"
+          >
+        </label>
+
+
+        <label>
+          Tipo
+
+          <select
+            id="cadastroTipo"
+          >
+            ${
+              [
+                'CONTA',
+                'CARTEIRA',
+                'DINHEIRO',
+                'POUPANÇA',
+                'INVESTIMENTO'
+              ]
+                .map(
+                  value => `
+                    <option
+                      value="${value}"
+                      ${
+                        String(
+                          item?.tipo ||
+                          'CONTA'
+                        ) === value
+                          ? 'selected'
+                          : ''
+                      }
+                    >
+                      ${value}
+                    </option>
+                  `
+                )
+                .join('')
+            }
+          </select>
+        </label>
+
+      </div>
+
+
+      <label>
+        Saldo inicial
+
+        <input
+          id="cadastroSaldo"
+          type="number"
+          step="0.01"
+          value="${
+            Number(
+              item?.saldoInicial ||
+              0
+            )
+          }"
+        >
+
+        <small class="field-hint">
+          Use apenas como referência inicial da conta.
+        </small>
+      </label>
+
+    `;
+
+  }
+
+
+  if (
+    tipo === 'categorias'
+  ) {
+
+    campos = `
+
+      <div class="form-grid">
+
+        <label>
+          Nome
+
+          <input
+            id="cadastroNome"
+            type="text"
+            placeholder="Ex.: Pets"
+            value="${
+              escapeAttribute(
+                item?.nome ||
+                ''
+              )
+            }"
+            required
+          >
+        </label>
+
+
+        <label>
+          Ícone / emoji
+
+          <input
+            id="cadastroIcone"
+            type="text"
+            maxlength="8"
+            placeholder="Ex.: 🐱"
+            value="${
+              escapeAttribute(
+                item?.icone ||
+                ''
+              )
+            }"
+          >
+        </label>
+
+      </div>
+
+
+      <label>
+        Tipo
+
+        <select
+          id="cadastroTipo"
+        >
+          <option
+            value="DESPESA"
+            ${
+              String(
+                item?.tipo ||
+                'DESPESA'
+              ) === 'DESPESA'
+                ? 'selected'
+                : ''
+            }
+          >
+            Despesa
+          </option>
+
+          <option
+            value="RECEITA"
+            ${
+              String(
+                item?.tipo ||
+                ''
+              ) === 'RECEITA'
+                ? 'selected'
+                : ''
+            }
+          >
+            Receita
+          </option>
+        </select>
+      </label>
+
+    `;
+
+  }
+
+
+  if (
+    tipo === 'formas'
+  ) {
+
+    campos = `
+
+      <label>
+        Nome da forma de pagamento
+
+        <input
+          id="cadastroNome"
+          type="text"
+          placeholder="Ex.: Débito automático"
+          value="${
+            escapeAttribute(
+              item?.nome ||
+              ''
+            )
+          }"
+          required
+        >
+      </label>
+
+    `;
+
+  }
+
+
+  modal.innerHTML = `
+
+    <div
+      class="finance-modal-backdrop"
+      data-close-cadastro
+    ></div>
+
+
+    <div
+      class="finance-modal-card"
+    >
+
+      <header
+        class="finance-modal-header"
+      >
+
+        <div>
+
+          <p class="eyebrow">
+            ${
+              item
+                ? 'EDITAR'
+                : 'NOVO CADASTRO'
+            }
+          </p>
+
+          <h2>
+            ${iconeCadastro(tipo)}
+            ${
+              item
+                ? 'Editar'
+                : 'Adicionar'
+            }
+            ${escapeHtml(
+              tituloCadastro(tipo)
+                .toLowerCase()
+            )}
+          </h2>
+
+        </div>
+
+
+        <button
+          type="button"
+          class="modal-close"
+          data-close-cadastro
+        >
+          ×
+        </button>
+
+      </header>
+
+
+      <form
+        id="formCadastroAjustes"
+      >
+
+        ${campos}
+
+
+        <div
+          id="cadastroAjustesErro"
+          class="form-error"
+        ></div>
+
+
+        <div
+          class="settings-form-actions"
+        >
+
+          <button
+            type="button"
+            class="settings-cancel-btn"
+            id="cadastroVoltarLista"
+          >
+            Voltar
+          </button>
+
+
+          <button
+            type="submit"
+            class="settings-save-btn"
+          >
+            Salvar
+          </button>
+
+        </div>
+
+      </form>
+
+    </div>
+
+  `;
+
+
+  modal
+    .classList
+    .remove('hidden');
+
+
+  modal
+    .querySelectorAll(
+      '[data-close-cadastro]'
+    )
+    .forEach(
+      el =>
+        el.addEventListener(
+          'click',
+          fecharModalCadastroAjustes
+        )
+    );
+
+
+  document
+    .getElementById(
+      'cadastroVoltarLista'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        abrirGerenciadorCadastro(
+          tipo
+        )
+    );
+
+
+  document
+    .getElementById(
+      'formCadastroAjustes'
+    )
+    ?.addEventListener(
+      'submit',
+      event =>
+        salvarCadastroAjustes(
+          event,
+          tipo,
+          item
+        )
+    );
+
+}
+
+
+async function salvarCadastroAjustes(
+  event,
+  tipo,
+  item
+) {
+
+  event.preventDefault();
+
+
+  const erro =
+    document.getElementById(
+      'cadastroAjustesErro'
+    );
+
+
+  const button =
+    event.currentTarget
+      ?.querySelector(
+        'button[type="submit"]'
+      );
+
+
+  try {
+
+    if (erro) {
+      erro.textContent = '';
+    }
+
+
+    if (button) {
+
+      button.disabled =
+        true;
+
+      button.textContent =
+        'Salvando...';
+
+    }
+
+
+    const nome =
+      document.getElementById(
+        'cadastroNome'
+      )?.value
+        ?.trim() ||
+      '';
+
+
+    if (!nome) {
+      throw new Error(
+        'Informe um nome.'
+      );
+    }
+
+
+    let action =
+      '';
+
+    let dados = {
+
+      id:
+        item?.id ||
+        '',
+
+      nome:
+
+        nome,
+
+      escopo:
+        state.escopo,
+
+      ativa:
+        item
+          ? item.ativa !== false
+          : true
+
+    };
+
+
+    if (
+      tipo === 'contas'
+    ) {
+
+      action =
+        'salvarConta';
+
+      dados = {
+        ...dados,
+
+        banco:
+          document.getElementById(
+            'cadastroBanco'
+          )?.value
+            ?.trim() ||
+          'Outros',
+
+        tipo:
+          document.getElementById(
+            'cadastroTipo'
+          )?.value ||
+          'CONTA',
+
+        saldoInicial:
+          Number(
+            document.getElementById(
+              'cadastroSaldo'
+            )?.value ||
+            0
+          )
+      };
+
+    }
+
+
+    if (
+      tipo === 'categorias'
+    ) {
+
+      action =
+        'salvarCategoria';
+
+      dados = {
+        ...dados,
+
+        tipo:
+          document.getElementById(
+            'cadastroTipo'
+          )?.value ||
+          'DESPESA',
+
+        icone:
+          document.getElementById(
+            'cadastroIcone'
+          )?.value
+            ?.trim() ||
+          ''
+      };
+
+    }
+
+
+    if (
+      tipo === 'formas'
+    ) {
+
+      action =
+        'salvarFormaPagamento';
+
+    }
+
+
+    await api(
+      action,
+      dados,
+      'POST'
+    );
+
+
+    await atualizarCadastrosDepoisDeSalvar();
+
+
+    await abrirGerenciadorCadastro(
+      tipo
+    );
+
+  } catch (error) {
+
+    if (erro) {
+
+      erro.textContent =
+        error.message ||
+        'Não foi possível salvar.';
+
+    }
+
+  } finally {
+
+    if (
+      button &&
+      document.body.contains(
+        button
+      )
+    ) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        'Salvar';
+
+    }
+
+  }
+
+}
+
+
+async function alternarCadastroAjustes(
+  tipo,
+  id
+) {
+
+  if (
+    !state.cadastrosGerenciamento
+      ?.podeEditar
+  ) {
+    return;
+  }
+
+
+  const item =
+    listaCadastroAtual(
+      tipo
+    ).find(
+      x =>
+        String(x.id) ===
+        String(id)
+    );
+
+
+  if (!item) {
+    return;
+  }
+
+
+  const novaAtiva =
+    item.ativa === false;
+
+
+  try {
+
+    let action =
+      '';
+
+    let dados = {
+      ...item,
+
+      ativa:
+        novaAtiva,
+
+      escopo:
+        state.escopo
+    };
+
+
+    if (
+      tipo === 'contas'
+    ) {
+      action =
+        'salvarConta';
+    }
+
+
+    if (
+      tipo === 'categorias'
+    ) {
+      action =
+        'salvarCategoria';
+    }
+
+
+    if (
+      tipo === 'formas'
+    ) {
+      action =
+        'salvarFormaPagamento';
+    }
+
+
+    await api(
+      action,
+      dados,
+      'POST'
+    );
+
+
+    await atualizarCadastrosDepoisDeSalvar();
+
+
+    await abrirGerenciadorCadastro(
+      tipo
+    );
+
+  } catch (error) {
+
+    window.alert(
+      error.message ||
+      'Não foi possível alterar o cadastro.'
+    );
+
+  }
+
+}
+
+
+async function atualizarCadastrosDepoisDeSalvar() {
+
+  await carregarCadastrosDoEscopo(
+    false
+  );
+
+
+  state.cadastrosGerenciamento =
+    await carregarCadastrosDoEscopo(
+      true
+    );
+
+
+  renderResumoCadastrosAjustes(
+    state.cadastrosGerenciamento
+  );
+
+
+  if (
+    lancamentosPage &&
+    !lancamentosPage
+      .classList
+      .contains('hidden')
+  ) {
+
+    atualizarCategoriasFiltro();
+
+  }
 
 }
 
@@ -7892,7 +10076,6 @@ function aplicarTemaAjustes(
       'light'
     );
 
-
     localStorage.setItem(
       'financeiro-theme',
       'light'
@@ -7903,7 +10086,6 @@ function aplicarTemaAjustes(
     root.classList.remove(
       'light'
     );
-
 
     localStorage.setItem(
       'financeiro-theme',
