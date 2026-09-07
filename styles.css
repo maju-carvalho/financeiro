@@ -2914,3 +2914,19 @@ html {
     grid-template-columns: 26px minmax(0, 1fr);
   }
 }
+
+
+/* =====================================================
+   V7.1 — TROCA DE ESPAÇO MAIS SUAVE
+   ===================================================== */
+
+body.scope-switching #scopeSelect,
+body.scope-switching #settingsScopeSelect {
+  opacity: .72;
+}
+
+body.scope-switching .balance-card,
+body.scope-switching .launch-list,
+body.scope-switching .objective-list {
+  transition: opacity .16s ease;
+}

@@ -4,6 +4,9 @@ const CLIENT_ID =
 const API_URL =
   'https://meu-financeiro-api.ju-carvalho13.workers.dev';
 
+const ESCOPO_STORAGE_PREFIX =
+  'financeiro-escopo:';
+
 const root =
   document.documentElement;
 
@@ -62,7 +65,16 @@ const state = {
     'movimentacoes',
 
   recorrenciasGeradas:
-    {}
+    {},
+
+  /* Cache somente em memória por espaço.
+   * Nunca persiste dados financeiros no aparelho.
+   */
+  escopoCache:
+    {},
+
+  escopoRequestId:
+    0
 
 };
 
@@ -243,6 +255,13 @@ async function api(
 
   }
 
+  /* Qualquer gravação pode alterar totais de mais de um espaço
+   * (especialmente CASAL/rateio). Limpamos apenas o cache em memória.
+   */
+  if (method !== 'GET') {
+    state.escopoCache = {};
+  }
+
 
   const response =
     await fetch(
@@ -321,6 +340,161 @@ async function api(
 
 
 /* =====================================================
+   PREFERÊNCIA DE ESPAÇO / PERFORMANCE
+   ===================================================== */
+
+function chaveEscopoPreferido() {
+
+  const email =
+    String(
+      state.user?.email ||
+      state.user?.Email ||
+      ''
+    )
+      .trim()
+      .toLowerCase();
+
+  return (
+    ESCOPO_STORAGE_PREFIX +
+    (email || 'padrao')
+  );
+}
+
+
+function salvarEscopoPreferido(
+  escopo
+) {
+
+  if (!escopo) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      chaveEscopoPreferido(),
+      String(escopo)
+    );
+  } catch (e) {
+    console.warn(
+      'Não foi possível salvar o espaço preferido.',
+      e
+    );
+  }
+}
+
+
+function obterEscopoPreferidoPermitido() {
+
+  const escopos =
+    Array.isArray(
+      state.initialData?.escopos
+    )
+      ? state.initialData.escopos
+      : [];
+
+  let salvo = '';
+
+  try {
+    salvo =
+      localStorage.getItem(
+        chaveEscopoPreferido()
+      ) || '';
+  } catch (e) {
+    salvo = '';
+  }
+
+  const permitido =
+    escopos.some(
+      item =>
+        String(item.nome) ===
+        String(salvo)
+    );
+
+  return permitido
+    ? salvo
+    : (
+        state.user?.nome ||
+        escopos[0]?.nome ||
+        ''
+      );
+}
+
+
+function sincronizarSeletoresEscopo() {
+
+  const principal =
+    document.getElementById(
+      'scopeSelect'
+    );
+
+  if (principal) {
+    principal.value =
+      state.escopo || '';
+  }
+
+  const ajustes =
+    document.getElementById(
+      'settingsScopeSelect'
+    );
+
+  if (ajustes) {
+    ajustes.value =
+      state.escopo || '';
+  }
+}
+
+
+function aplicarSnapshotEscopo(
+  snapshot,
+  escopo
+) {
+
+  if (
+    !snapshot ||
+    String(state.escopo) !==
+      String(escopo)
+  ) {
+    return;
+  }
+
+  state.contas =
+    snapshot.contas || [];
+
+  state.categorias =
+    snapshot.categorias || [];
+
+  state.formasPagamento =
+    snapshot.formasPagamento || [];
+
+  state.recorrentes =
+    snapshot.recorrentes || [];
+
+  state.objetivos =
+    snapshot.objetivos || [];
+
+  state.dashboard =
+    snapshot.dashboard || null;
+
+  state.lancamentos =
+    snapshot.lancamentos || [];
+
+  state.lancamentosCarregados =
+    Array.isArray(
+      snapshot.lancamentos
+    );
+
+  if (state.dashboard) {
+    renderDashboard(
+      state.dashboard
+    );
+  }
+
+  atualizarPermissaoVisual();
+  sincronizarSeletoresEscopo();
+}
+
+
+/* =====================================================
    CARREGAMENTO INICIAL
    ===================================================== */
 
@@ -368,19 +542,67 @@ async function carregarAplicacao() {
       [];
 
     /*
-     * Por padrão começa no espaço pessoal.
+     * Restaura o último espaço escolhido neste aparelho,
+     * desde que ele ainda esteja autorizado para o usuário.
      */
-
     state.escopo =
-      state.user.nome;
+      obterEscopoPreferidoPermitido();
 
     atualizarInterfaceUsuario();
-
     atualizarPermissaoVisual();
+    sincronizarSeletoresEscopo();
 
-    await carregarDashboard();
+    if (
+      state.escopo ===
+      state.user.nome
+    ) {
 
-    carregarLancamentos();
+      /* getInitialData já trouxe os cadastros do espaço pessoal. */
+      const [dashboard, lancamentos] =
+        await Promise.all([
+          api(
+            'obterDashboard',
+            { escopo: state.escopo }
+          ),
+          api(
+            'listarLancamentos',
+            { escopo: state.escopo }
+          )
+        ]);
+
+      state.dashboard = dashboard;
+      state.lancamentos =
+        Array.isArray(lancamentos)
+          ? lancamentos
+          : [];
+      state.lancamentosCarregados = true;
+
+      renderDashboard(dashboard);
+
+      state.escopoCache[
+        state.escopo
+      ] = {
+        contas: state.contas,
+        categorias: state.categorias,
+        formasPagamento:
+          state.formasPagamento,
+        recorrentes:
+          state.recorrentes,
+        objetivos:
+          state.objetivos,
+        dashboard:
+          state.dashboard,
+        lancamentos:
+          state.lancamentos
+      };
+
+    } else {
+
+      await trocarEscopo(
+        state.escopo,
+        { inicial: true }
+      );
+    }
 
   } catch (error) {
 
@@ -1090,92 +1312,198 @@ async function carregarCadastrosDoEscopo(
 
 
 async function trocarEscopo(
-  escopo
+  escopo,
+  opcoes = {}
 ) {
 
   if (!escopo) {
     return;
   }
 
+  const escopoAlvo =
+    String(escopo);
 
+  const requestId =
+    ++state.escopoRequestId;
+
+  /* A troca visual acontece imediatamente. */
   state.escopo =
-    escopo;
+    escopoAlvo;
 
-
-  /*
-   * Mudou o espaço: o cache antigo não serve.
-   */
-  state.lancamentos =
-    [];
-
-  state.lancamentosCarregados =
-    false;
-
-  state.lancamentosCarregando =
-    null;
-
-
-  state.dashboard =
-    null;
-
-  state.dashboardCarregado =
-    false;
-
-
-  await carregarCadastrosDoEscopo(
-    false
+  salvarEscopoPreferido(
+    escopoAlvo
   );
 
-  state.recorrentes =
-    await api(
-      'listarRecorrentes',
-      {
-        escopo:
-          state.escopo
-      }
-    );
-
-  state.recorrenciasGeradas =
-    {};
-
+  atualizarSeletorEscopo();
+  sincronizarSeletoresEscopo();
   atualizarPermissaoVisual();
 
+  const snapshot =
+    state.escopoCache[
+      escopoAlvo
+    ];
 
-  await Promise.all([
-    carregarDashboard(true),
-    carregarLancamentos({}, true)
-  ]);
-
-
-  if (
-    objetivosPage &&
-    !objetivosPage.classList.contains(
-      'hidden'
-    )
-  ) {
-
-    await carregarObjetivos();
-
-    renderPaginaObjetivos();
-
+  /* Se já visitou este espaço na sessão, mostra na hora. */
+  if (snapshot) {
+    aplicarSnapshotEscopo(
+      snapshot,
+      escopoAlvo
+    );
+  } else {
+    state.dashboard = null;
+    state.lancamentos = [];
+    state.lancamentosCarregados = false;
   }
 
+  state.lancamentosCarregando = null;
+  state.dashboardCarregado = false;
+  state.recorrenciasGeradas = {};
 
-  if (
-    lancamentosPage &&
-    !lancamentosPage.classList.contains(
-      'hidden'
-    )
-  ) {
+  document.body.classList.add(
+    'scope-switching'
+  );
 
-    preencherFiltroMeses();
+  try {
 
-    atualizarCategoriasFiltro();
+    /* Antes eram chamadas em sequência. Agora todas saem juntas. */
+    const [
+      cadastros,
+      recorrentes,
+      objetivos,
+      dashboard,
+      lancamentos
+    ] = await Promise.all([
 
-    await atualizarListaLancamentosPage();
+      api(
+        'obterCadastros',
+        {
+          escopo: escopoAlvo,
+          incluirInativas: 'false'
+        }
+      ),
 
+      api(
+        'listarRecorrentes',
+        { escopo: escopoAlvo }
+      ),
+
+      api(
+        'listarObjetivos',
+        { escopo: escopoAlvo }
+      ),
+
+      api(
+        'obterDashboard',
+        { escopo: escopoAlvo }
+      ),
+
+      api(
+        'listarLancamentos',
+        { escopo: escopoAlvo }
+      )
+    ]);
+
+    /* Se o usuário já escolheu outro perfil enquanto esta
+     * resposta estava viajando, ignoramos a resposta antiga.
+     */
+    if (
+      requestId !==
+        state.escopoRequestId ||
+      state.escopo !==
+        escopoAlvo
+    ) {
+      return;
+    }
+
+    const novoSnapshot = {
+      contas:
+        cadastros?.contas || [],
+      categorias:
+        cadastros?.categorias || [],
+      formasPagamento:
+        cadastros?.formasPagamento || [],
+      recorrentes:
+        Array.isArray(recorrentes)
+          ? recorrentes
+          : [],
+      objetivos:
+        Array.isArray(objetivos)
+          ? objetivos
+          : [],
+      dashboard:
+        dashboard || null,
+      lancamentos:
+        Array.isArray(lancamentos)
+          ? lancamentos
+          : []
+    };
+
+    state.escopoCache[
+      escopoAlvo
+    ] = novoSnapshot;
+
+    aplicarSnapshotEscopo(
+      novoSnapshot,
+      escopoAlvo
+    );
+
+    state.lancamentosCarregados = true;
+
+    if (
+      objetivosPage &&
+      !objetivosPage.classList.contains(
+        'hidden'
+      )
+    ) {
+      renderPaginaObjetivos();
+    }
+
+    if (
+      lancamentosPage &&
+      !lancamentosPage.classList.contains(
+        'hidden'
+      )
+    ) {
+      preencherFiltroMeses();
+      atualizarCategoriasFiltro();
+      await atualizarListaLancamentosPage();
+    }
+
+    if (
+      ajustesPage &&
+      !ajustesPage.classList.contains(
+        'hidden'
+      )
+    ) {
+      preencherPaginaAjustes();
+    }
+
+  } catch (error) {
+
+    if (
+      requestId ===
+      state.escopoRequestId
+    ) {
+      console.error(
+        'Troca de espaço:',
+        error
+      );
+      mostrarErro(
+        error.message
+      );
+    }
+
+  } finally {
+
+    if (
+      requestId ===
+      state.escopoRequestId
+    ) {
+      document.body.classList.remove(
+        'scope-switching'
+      );
+    }
   }
-
 }
 
 function configurarTema() {
