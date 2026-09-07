@@ -444,6 +444,86 @@ function sincronizarSeletoresEscopo() {
 }
 
 
+function atualizarIndicadorEscopo(
+  estado = 'ready'
+) {
+
+  const indicador =
+    document.getElementById(
+      'scopeLoadIndicator'
+    );
+
+  if (!indicador) {
+    return;
+  }
+
+  indicador.classList.remove(
+    'loading',
+    'ready',
+    'error'
+  );
+
+  indicador.classList.add(
+    estado
+  );
+
+  const icone =
+    indicador.querySelector(
+      '.scope-load-icon'
+    );
+
+  const texto =
+    indicador.querySelector(
+      '.scope-load-text'
+    );
+
+  if (
+    estado === 'loading'
+  ) {
+    if (icone) {
+      icone.innerHTML =
+        '<i class="scope-load-spinner" aria-hidden="true"></i>';
+    }
+    if (texto) {
+      texto.textContent =
+        'Carregando';
+    }
+    indicador.setAttribute(
+      'aria-label',
+      'Carregando perfil financeiro'
+    );
+    return;
+  }
+
+  if (
+    estado === 'error'
+  ) {
+    if (icone) {
+      icone.textContent = '!';
+    }
+    if (texto) {
+      texto.textContent = 'Erro';
+    }
+    indicador.setAttribute(
+      'aria-label',
+      'Não foi possível atualizar o perfil'
+    );
+    return;
+  }
+
+  if (icone) {
+    icone.textContent = '✓';
+  }
+  if (texto) {
+    texto.textContent = 'Pronto';
+  }
+  indicador.setAttribute(
+    'aria-label',
+    'Perfil carregado e pronto'
+  );
+}
+
+
 function aplicarSnapshotEscopo(
   snapshot,
   escopo
@@ -1363,6 +1443,12 @@ async function trocarEscopo(
     'scope-switching'
   );
 
+  atualizarIndicadorEscopo(
+    'loading'
+  );
+
+  let trocaConcluida = false;
+
   try {
 
     /* Antes eram chamadas em sequência. Agora todas saem juntas. */
@@ -1449,6 +1535,8 @@ async function trocarEscopo(
 
     state.lancamentosCarregados = true;
 
+    trocaConcluida = true;
+
     if (
       objetivosPage &&
       !objetivosPage.classList.contains(
@@ -1501,6 +1589,12 @@ async function trocarEscopo(
     ) {
       document.body.classList.remove(
         'scope-switching'
+      );
+
+      atualizarIndicadorEscopo(
+        trocaConcluida
+          ? 'ready'
+          : 'error'
       );
     }
   }
@@ -3030,136 +3124,199 @@ function criarPaginaLancamentos() {
    FILTRO DE MESES
    ===================================================== */
 
-function preencherFiltroMeses() {
+function chaveMesLocal(
+  data = new Date()
+) {
+
+  return (
+    data.getFullYear() +
+    '-' +
+    String(
+      data.getMonth() + 1
+    ).padStart(2, '0')
+  );
+}
+
+
+function rotuloMesLancamentos(
+  chave
+) {
+
+  const [ano, numero] =
+    String(chave)
+      .split('-')
+      .map(Number);
+
+  const data =
+    new Date(
+      ano,
+      numero - 1,
+      1
+    );
+
+  const nome =
+    data.toLocaleDateString(
+      'pt-BR',
+      {
+        month: 'long',
+        year: 'numeric'
+      }
+    );
+
+  return (
+    nome.charAt(0).toUpperCase() +
+    nome.slice(1)
+  );
+}
+
+
+function preencherFiltroMeses(
+  opcoes = {}
+) {
 
   const select =
     document.getElementById(
       'filtroMesLancamentos'
     );
 
-
   if (!select) {
     return;
   }
 
+  const agora = new Date();
+  const mesAtual =
+    chaveMesLocal(agora);
 
-  const valorAtual =
-    select.value;
+  const mudouMesCalendario =
+    select.dataset.mesPadrao &&
+    select.dataset.mesPadrao !==
+      mesAtual;
 
+  const primeiraVez =
+    select.dataset.inicializado !==
+      'true';
 
-  const meses =
-    new Set();
+  const forcarMesAtual =
+    opcoes.forcarMesAtual === true ||
+    primeiraVez ||
+    mudouMesCalendario;
 
+  const valorAnterior =
+    forcarMesAtual
+      ? mesAtual
+      : (
+          select.value ||
+          mesAtual
+        );
 
+  const meses = new Set();
+
+  /*
+   * Mantemos uma janela navegável de 12 meses
+   * para trás e 12 meses para frente, mesmo
+   * quando ainda não existe lançamento naquele mês.
+   */
+  for (let offset = -12; offset <= 12; offset++) {
+    meses.add(
+      chaveMesLocal(
+        new Date(
+          agora.getFullYear(),
+          agora.getMonth() + offset,
+          1
+        )
+      )
+    );
+  }
+
+  /* E acrescentamos qualquer mês mais antigo ou
+   * mais distante que já exista no histórico.
+   */
   state.lancamentos
     .forEach(
       lancamento => {
-
-        if (
-          lancamento.data
-        ) {
-
+        if (lancamento.data) {
           meses.add(
             String(
               lancamento.data
-            ).substring(
-              0,
-              7
-            )
+            ).substring(0, 7)
           );
-
         }
-
       }
     );
 
+  const futuros = [];
+  const passados = [];
 
-  const ordenados =
-    [
-      ...meses
-    ]
-      .sort(
-        (a, b) =>
-          b.localeCompare(a)
-      );
+  meses.forEach(
+    mes => {
+      if (mes >= mesAtual) {
+        futuros.push(mes);
+      } else {
+        passados.push(mes);
+      }
+    }
+  );
 
+  futuros.sort(
+    (a, b) =>
+      a.localeCompare(b)
+  );
+
+  passados.sort(
+    (a, b) =>
+      b.localeCompare(a)
+  );
+
+  const ordenados = [
+    ...futuros,
+    ...passados
+  ];
 
   select.innerHTML = `
-
     <option value="TODOS">
       Todos os meses
     </option>
-
   `;
-
 
   ordenados.forEach(
     mes => {
-
-      const [ano, numero] =
-        mes.split('-');
-
-
-      const data =
-        new Date(
-          Number(ano),
-          Number(numero) - 1,
-          1
-        );
-
-
-      const nome =
-        data.toLocaleDateString(
-          'pt-BR',
-          {
-            month:
-              'long',
-
-            year:
-              'numeric'
-          }
-        );
-
-
       const option =
         document.createElement(
           'option'
         );
 
-
-      option.value =
-        mes;
-
-
+      option.value = mes;
       option.textContent =
-        nome.charAt(0).toUpperCase() +
-        nome.slice(1);
-
+        rotuloMesLancamentos(
+          mes
+        );
 
       select.appendChild(
         option
       );
-
     }
   );
 
-
-  if (
-    valorAtual &&
-    [
+  const valoresDisponiveis =
+    new Set([
       'TODOS',
       ...ordenados
-    ].includes(
-      valorAtual
+    ]);
+
+  select.value =
+    valoresDisponiveis.has(
+      valorAnterior
     )
-  ) {
+      ? valorAnterior
+      : mesAtual;
 
-    select.value =
-      valorAtual;
+  select.dataset.inicializado =
+    'true';
 
-  }
-
+  select.dataset.mesPadrao =
+    mesAtual;
 }
+
 
 
 /* =====================================================
@@ -7583,6 +7740,42 @@ function criarPaginaRelatorios() {
 
 
     <section
+      class="report-section-card hidden"
+      id="relatorioPessoasCard"
+    >
+
+      <div
+        class="report-section-title"
+      >
+
+        <div>
+
+          <p>
+            Despesas por pessoa
+          </p>
+
+          <small>
+            Quanto cada pessoa assumiu nas despesas do casal
+          </small>
+
+        </div>
+
+      </div>
+
+      <div
+        id="relatorioPessoas"
+        class="report-bars"
+      ></div>
+
+      <div
+        id="relatorioPessoasDetalhes"
+        class="report-person-details"
+      ></div>
+
+    </section>
+
+
+    <section
       class="report-section-card"
     >
 
@@ -8133,6 +8326,163 @@ function renderPaginaRelatorios() {
 
 
   /*
+   * Despesas por pessoa — somente no espaço CASAL.
+   */
+  const pessoasCard =
+    document.getElementById(
+      'relatorioPessoasCard'
+    );
+
+  const pessoasDetalhes =
+    document.getElementById(
+      'relatorioPessoasDetalhes'
+    );
+
+  if (
+    state.escopo === 'CASAL'
+  ) {
+
+    pessoasCard
+      ?.classList
+      .remove('hidden');
+
+    const porPessoa = {};
+    const itensPorPessoa = {};
+
+    despesas.forEach(
+      item => {
+
+        const rateio =
+          Array.isArray(
+            item.rateio
+          )
+            ? item.rateio
+            : [];
+
+        if (!rateio.length) {
+          const nome =
+            'Sem rateio';
+
+          porPessoa[nome] =
+            (porPessoa[nome] || 0) +
+            Number(item.valor || 0);
+
+          itensPorPessoa[nome] =
+            itensPorPessoa[nome] || [];
+
+          itensPorPessoa[nome].push({
+            descricao:
+              item.descricao ||
+              'Despesa',
+            valor:
+              Number(
+                item.valor || 0
+              )
+          });
+
+          return;
+        }
+
+        rateio.forEach(
+          parte => {
+            const nome =
+              parte.nome ||
+              parte.email ||
+              'Não informado';
+
+            const valor =
+              Number(
+                parte.valor || 0
+              );
+
+            porPessoa[nome] =
+              (porPessoa[nome] || 0) +
+              valor;
+
+            itensPorPessoa[nome] =
+              itensPorPessoa[nome] || [];
+
+            itensPorPessoa[nome].push({
+              descricao:
+                item.descricao ||
+                'Despesa',
+              valor
+            });
+          }
+        );
+      }
+    );
+
+    const pessoasOrdenadas =
+      Object.entries(
+        porPessoa
+      )
+        .sort(
+          (a, b) =>
+            b[1] - a[1]
+        );
+
+    renderBarrasRelatorio(
+      'relatorioPessoas',
+      pessoasOrdenadas,
+      totalDespesas
+    );
+
+    if (pessoasDetalhes) {
+
+      pessoasDetalhes.innerHTML =
+        pessoasOrdenadas.length
+          ? pessoasOrdenadas
+              .map(
+                ([nome, total]) => {
+
+                  const itens =
+                    (itensPorPessoa[nome] || [])
+                      .sort(
+                        (a, b) =>
+                          b.valor - a.valor
+                      )
+                      .slice(0, 6);
+
+                  return `
+                    <article class="report-person-card">
+                      <div class="report-person-head">
+                        <strong>${escapeHtml(nome)}</strong>
+                        <b>${formatMoney(total)}</b>
+                      </div>
+                      <div class="report-person-items">
+                        ${itens
+                          .map(
+                            item => `
+                              <div>
+                                <span>${escapeHtml(item.descricao)}</span>
+                                <strong>${formatMoney(item.valor)}</strong>
+                              </div>
+                            `
+                          )
+                          .join('')}
+                      </div>
+                    </article>
+                  `;
+                }
+              )
+              .join('')
+          : `
+              <div class="report-empty">
+                Nenhuma despesa rateada no período selecionado.
+              </div>
+            `;
+    }
+
+  } else {
+
+    pessoasCard
+      ?.classList
+      .add('hidden');
+  }
+
+
+  /*
    * Maiores despesas
    */
   const maiores =
@@ -8570,10 +8920,31 @@ function criarPaginaAjustes() {
           Espaço atual
         </span>
 
+        <div
+          class="settings-scope-switch-row"
+        >
 
-        <select
-          id="settingsScopeSelect"
-        ></select>
+          <select
+            id="settingsScopeSelect"
+          ></select>
+
+          <span
+            id="scopeLoadIndicator"
+            class="scope-load-indicator ready"
+            role="status"
+            aria-live="polite"
+            aria-label="Perfil carregado e pronto"
+          >
+            <span
+              class="scope-load-icon"
+              aria-hidden="true"
+            >✓</span>
+            <small
+              class="scope-load-text"
+            >Pronto</small>
+          </span>
+
+        </div>
 
       </label>
 
@@ -12385,6 +12756,9 @@ async function abrirPaginaLancamentos(
     carregarRecorrentesDoEscopo()
   ]);
 
+  preencherFiltroMeses();
+  atualizarCategoriasFiltro();
+
   selecionarAbaLancamentos(
     state.lancamentosAba,
     false
@@ -12770,12 +13144,37 @@ function selecionarAbaLancamentos(
 
 function atualizarContadoresTabsLancamentos() {
 
+  const mesSelecionado =
+    document.getElementById(
+      'filtroMesLancamentos'
+    )?.value ||
+    chaveMesLocal();
+
   const pendentes =
     state.lancamentos
       .filter(
-        item =>
-          item.status ===
-          'PENDENTE'
+        item => {
+
+          if (
+            item.status !==
+            'PENDENTE'
+          ) {
+            return false;
+          }
+
+          if (
+            mesSelecionado ===
+            'TODOS'
+          ) {
+            return true;
+          }
+
+          return String(
+            item.data || ''
+          ).startsWith(
+            mesSelecionado
+          );
+        }
       )
       .length;
 

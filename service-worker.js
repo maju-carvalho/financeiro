@@ -1,11 +1,11 @@
-const CACHE_NAME = 'meu-financeiro-shell-v7-1-performance';
+const CACHE_NAME = 'meu-financeiro-shell-v7-2-perfil-meses-relatorio';
 
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=v7-1-performance',
-  './app.js?v=v7-1-performance',
-  './manifest.json?v=v7-1-performance',
+  './styles.css?v=v7-2-perfil-meses-relatorio',
+  './app.js?v=v7-2-perfil-meses-relatorio',
+  './manifest.json?v=v7-2-perfil-meses-relatorio',
   './icon-180.png',
   './icon-192.png',
   './icon-512.png',

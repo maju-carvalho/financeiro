@@ -2930,3 +2930,163 @@ body.scope-switching .launch-list,
 body.scope-switching .objective-list {
   transition: opacity .16s ease;
 }
+
+
+/* =====================================================
+   V7.2 — STATUS DE PERFIL / FILTROS / RELATÓRIO CASAL
+   ===================================================== */
+
+.settings-scope-switch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 7px;
+}
+
+.settings-scope-switch-row #settingsScopeSelect {
+  margin-top: 0;
+}
+
+.scope-load-indicator {
+  min-width: 88px;
+  min-height: 43px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--muted);
+  white-space: nowrap;
+  transition: border-color .18s ease, background .18s ease, color .18s ease;
+}
+
+.scope-load-indicator small {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.scope-load-icon {
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 17px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.scope-load-indicator.ready {
+  border-color: rgba(46, 204, 113, .35);
+  background: rgba(46, 204, 113, .10);
+  color: var(--positive);
+}
+
+.scope-load-indicator.loading {
+  border-color: rgba(128, 102, 255, .45);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.scope-load-indicator.error {
+  border-color: rgba(255, 100, 123, .4);
+  background: rgba(255, 100, 123, .10);
+  color: var(--negative);
+}
+
+.scope-load-spinner {
+  width: 15px;
+  height: 15px;
+  display: block;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: scopeLoadingSpin .65s linear infinite;
+}
+
+@keyframes scopeLoadingSpin {
+  to { transform: rotate(360deg); }
+}
+
+.report-person-details {
+  display: grid;
+  gap: 9px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.report-person-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.report-person-head,
+.report-person-items > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.report-person-head {
+  margin-bottom: 8px;
+}
+
+.report-person-head > strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.report-person-head > b {
+  color: var(--primary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.report-person-items {
+  display: grid;
+  gap: 6px;
+}
+
+.report-person-items > div {
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.report-person-items span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-person-items strong {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-size: 11px;
+}
+
+@media (max-width: 430px) {
+  .settings-scope-switch-row {
+    grid-template-columns: minmax(0, 1fr) 72px;
+    gap: 8px;
+  }
+
+  .scope-load-indicator {
+    min-width: 72px;
+    padding: 0 7px;
+  }
+
+  .scope-load-indicator small {
+    font-size: 9px;
+  }
+}
