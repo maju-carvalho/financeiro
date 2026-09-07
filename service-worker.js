@@ -1,11 +1,11 @@
-const CACHE_NAME = 'meu-financeiro-shell-v6-1-ios';
+const CACHE_NAME = 'meu-financeiro-shell-v7-rateio';
 
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=v6-1-ios',
-  './app.js?v=v6-1-ios',
-  './manifest.json?v=v6-1-ios',
+  './styles.css?v=v7-rateio',
+  './app.js?v=v7-rateio',
+  './manifest.json?v=v7-rateio',
   './icon-180.png',
   './icon-192.png',
   './icon-512.png',

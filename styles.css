@@ -2588,3 +2588,329 @@ body.scope-readonly #novoRecorrentePageBtn {
   background: #e5e7eb;
   color: #6b7280;
 }
+
+
+/* =====================================================
+   V7 — LANÇAMENTOS SEGUROS + MODAL IOS + RATEIO CASAL
+   ===================================================== */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+.finance-modal,
+.finance-modal-card,
+.finance-modal-card form,
+.finance-modal-card label,
+.finance-modal-card .form-grid,
+.finance-modal-card .status-form-grid {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.finance-modal-card {
+  overflow-x: hidden;
+}
+
+.finance-modal-card *,
+.finance-modal-card *::before,
+.finance-modal-card *::after {
+  box-sizing: border-box;
+}
+
+/* iOS amplia automaticamente campos com fonte abaixo de 16px. */
+.finance-modal-card input,
+.finance-modal-card select,
+.finance-modal-card textarea {
+  min-width: 0;
+  max-width: 100%;
+  font-size: 16px !important;
+}
+
+.recurrence-toggle {
+  width: 100%;
+  min-width: 0;
+  display: grid !important;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.recurrence-toggle input[type="checkbox"] {
+  width: 22px !important;
+  min-width: 22px !important;
+  max-width: 22px !important;
+  height: 22px;
+  margin: 2px 0 0 !important;
+  padding: 0 !important;
+}
+
+.recurrence-toggle > span,
+.recurrence-toggle strong,
+.recurrence-toggle small {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Cada lançamento vira um cartão visualmente independente. */
+.launch-item-v5 {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px var(--shadow);
+}
+
+.launch-item-v5 + .launch-item-v5 {
+  margin-top: 1px;
+}
+
+.launch-couple-share {
+  display: block;
+  margin-top: 6px !important;
+  color: #b4a8ff !important;
+  line-height: 1.35;
+  white-space: normal !important;
+}
+
+/* RATEIO */
+.couple-split-card {
+  width: 100%;
+  min-width: 0;
+  margin: 4px 0 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: var(--surface-2);
+}
+
+.couple-split-head strong,
+.couple-split-head small {
+  display: block;
+}
+
+.couple-split-head strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.couple-split-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.couple-split-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-top: 13px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-3);
+}
+
+.couple-split-mode button,
+.couple-split-quick button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.couple-split-mode button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.couple-split-quick {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.couple-split-quick button {
+  min-width: 0;
+  padding: 7px 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.couple-split-rows {
+  display: grid;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.finance-modal-card .couple-split-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, .72fr);
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+}
+
+.couple-split-person {
+  min-width: 0;
+}
+
+.couple-split-person b,
+.couple-split-person small {
+  display: block;
+}
+
+.couple-split-person b {
+  color: var(--text);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.couple-split-person small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.couple-split-input-wrap {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.couple-split-unit {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.finance-modal-card .couple-split-input-wrap input {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  text-align: right;
+}
+
+.couple-split-summary {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.couple-split-summary.is-error {
+  color: var(--negative);
+}
+
+@media (max-width: 600px) {
+
+  .finance-modal-card {
+    left: 50%;
+    width: calc(100% - 24px);
+    max-width: 520px;
+    padding-left: 17px;
+    padding-right: 17px;
+  }
+
+  /*
+   * Os botões ficam dentro do mesmo cartão, à direita,
+   * em vez de numa faixa abaixo que parece pertencer ao item seguinte.
+   */
+  .launch-item-v5 {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px;
+  }
+
+  .launch-item-v5 .launch-info {
+    grid-column: 2 / 3;
+    grid-row: 1;
+  }
+
+  .launch-item-v5 .launch-value {
+    grid-column: 2 / 3;
+    grid-row: 2;
+    margin-top: 7px;
+    text-align: left;
+  }
+
+  .launch-item-v5 .launch-actions-icons {
+    grid-column: 3 / 4;
+    grid-row: 1 / span 2;
+    align-self: center;
+    justify-self: end;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 7px;
+    padding: 0;
+    border: 0;
+  }
+
+  .launch-item-v5 .launch-realize-btn {
+    width: 42px;
+    min-width: 42px;
+    height: 36px;
+    margin: 0;
+    padding: 0 5px;
+    overflow: hidden;
+    font-size: 0;
+  }
+
+  .launch-item-v5 .launch-realize-btn::before {
+    content: '✓';
+    font-size: 17px;
+  }
+
+  .launch-item-v5 .launch-icon-btn {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+  }
+
+  .finance-modal-card .couple-split-row {
+    grid-template-columns: minmax(0, 1fr) 132px;
+  }
+
+  .couple-split-quick {
+    grid-template-columns: 1fr;
+  }
+
+  .couple-split-quick button {
+    min-height: 36px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 390px) {
+  .finance-modal-card .couple-split-row {
+    grid-template-columns: 1fr;
+  }
+
+  .couple-split-input-wrap {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+}

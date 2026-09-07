@@ -43,6 +43,8 @@ const state = {
 
   formasPagamento: [],
 
+  participantesCasal: [],
+
   recorrentes: [],
 
   cadastrosGerenciamento: null,
@@ -351,6 +353,10 @@ async function carregarAplicacao() {
 
     state.formasPagamento =
       data.formasPagamento ||
+      [];
+
+    state.participantesCasal =
+      data.participantesCasal ||
       [];
 
     state.objetivos =
@@ -4594,64 +4600,74 @@ async function excluirLancamentoDaPagina(
   id
 ) {
 
-  const confirmado =
-    window.confirm(
-      'Excluir este lançamento?'
+  const item =
+    state.lancamentos.find(
+      x =>
+        String(
+          x.id
+        ) ===
+        String(
+          id
+        )
     );
 
+  if (
+    item?.somenteLeitura
+  ) {
+    window.alert(
+      'Esta movimentação vem do rateio do Casal. Edite o lançamento original no espaço Casal.'
+    );
+    return;
+  }
+
+  const descricao =
+    item?.descricao ||
+    'este lançamento';
+
+  const valor =
+    item
+      ? formatMoney(
+          item.valor
+        )
+      : '';
+
+  const confirmado =
+    window.confirm(
+      `Excluir "${descricao}"${valor ? ' · ' + valor : ''}?\n\nEsta ação não pode ser desfeita.`
+    );
 
   if (!confirmado) {
     return;
   }
-
 
   try {
 
     await api(
       'excluirLancamento',
       {
-        id:
-          id
+        id: id
       },
       'POST'
     );
 
-
-    state.lancamentos =
-      [];
-
-    state.lancamentosCarregados =
-      false;
-
-    state.lancamentosCarregando =
-      null;
-
+    state.lancamentos = [];
+    state.lancamentosCarregados = false;
+    state.lancamentosCarregando = null;
 
     await carregarLancamentos(
       {},
       true
     );
 
-
     preencherFiltroMeses();
-
     atualizarCategoriasFiltro();
-
 
     await atualizarListaLancamentosPage();
 
+    state.dashboard = null;
+    state.dashboardCarregado = false;
 
-    state.dashboard =
-      null;
-
-    state.dashboardCarregado =
-      false;
-
-
-    await carregarDashboard(
-      true
-    );
-
+    await carregarDashboard(true);
 
   } catch (error) {
 
@@ -4660,15 +4676,13 @@ async function excluirLancamentoDaPagina(
       error
     );
 
-
-    alert(
+    window.alert(
       error.message ||
       'Não foi possível excluir o lançamento.'
     );
-
   }
-
 }
+
 
 
 /* =====================================================
@@ -8477,7 +8491,7 @@ function criarPaginaAjustes() {
           </strong>
 
           <small>
-            Meu Financeiro · versão 6
+            Meu Financeiro · versão 7
           </small>
 
         </div>
@@ -10457,6 +10471,1227 @@ function atualizarBotoesTemaAjustes() {
    V5 — PREVISTO X REALIZADO / RECORRENTES
    ===================================================== */
 
+
+/* =====================================================
+   RATEIO DE DESPESAS DO CASAL — V7
+   ===================================================== */
+
+function participantesRateioCasal() {
+
+  const lista =
+    Array.isArray(
+      state.participantesCasal
+    )
+      ? state.participantesCasal
+      : [];
+
+  return lista
+    .filter(
+      item =>
+        item &&
+        item.nome &&
+        item.email
+    )
+    .map(
+      item => ({
+        nome:
+          String(item.nome),
+        email:
+          String(item.email)
+            .toLowerCase()
+      })
+    );
+}
+
+
+function numeroRateioInput(
+  valor
+) {
+
+  const numero =
+    Number(
+      String(
+        valor ?? ''
+      )
+        .trim()
+        .replace(',', '.')
+    );
+
+  return Number.isFinite(
+    numero
+  )
+    ? numero
+    : 0;
+}
+
+
+function rateioInicialIgual(
+  total
+) {
+
+  const participantes =
+    participantesRateioCasal();
+
+  if (!participantes.length) {
+    return [];
+  }
+
+  const totalCentavos =
+    Math.round(
+      Number(total || 0) *
+      100
+    );
+
+  const base =
+    Math.floor(
+      totalCentavos /
+      participantes.length
+    );
+
+  let usados = 0;
+
+  return participantes.map(
+    (p, index) => {
+
+      const centavos =
+        index ===
+        participantes.length - 1
+          ? totalCentavos - usados
+          : base;
+
+      usados += centavos;
+
+      return {
+        ...p,
+        valor:
+          centavos /
+          100,
+        percentual:
+          totalCentavos > 0
+            ? centavos /
+              totalCentavos *
+              100
+            : 0
+      };
+    }
+  );
+}
+
+
+function criarCardRateioCasal(
+  prefixo,
+  total,
+  rateioExistente = []
+) {
+
+  const participantes =
+    participantesRateioCasal();
+
+  const card =
+    document.createElement(
+      'section'
+    );
+
+  card.id =
+    `${prefixo}RateioCard`;
+
+  card.className =
+    'couple-split-card';
+
+  card.dataset.mode =
+    'VALOR';
+
+  card.dataset.autoSplit =
+    rateioExistente?.length
+      ? '0'
+      : '1';
+
+  if (
+    participantes.length < 2
+  ) {
+
+    card.innerHTML = `
+      <div class="couple-split-head">
+        <div>
+          <strong>❤️ Divisão da despesa do casal</strong>
+          <small>Cadastre os dois usuários ativos para usar o rateio.</small>
+        </div>
+      </div>
+    `;
+
+    return card;
+  }
+
+  const inicial =
+    rateioExistente?.length
+      ? participantes.map(
+          p => {
+
+            const salvo =
+              rateioExistente.find(
+                item =>
+                  String(
+                    item.email || ''
+                  ).toLowerCase() ===
+                  p.email
+              );
+
+            return {
+              ...p,
+              valor:
+                Number(
+                  salvo?.valor || 0
+                ),
+              percentual:
+                Number(
+                  salvo?.percentual || 0
+                )
+            };
+          }
+        )
+      : rateioInicialIgual(
+          total
+        );
+
+  card.innerHTML = `
+
+    <div class="couple-split-head">
+      <div>
+        <strong>❤️ Quem paga esta despesa?</strong>
+        <small>
+          O Casal guarda o valor total e cada parte entra automaticamente no financeiro pessoal correspondente.
+        </small>
+      </div>
+    </div>
+
+    <div
+      class="couple-split-mode"
+      role="group"
+      aria-label="Forma de dividir"
+    >
+      <button
+        type="button"
+        class="active"
+        data-split-mode="VALOR"
+      >
+        R$ Valor
+      </button>
+
+      <button
+        type="button"
+        data-split-mode="PERCENTUAL"
+      >
+        % Percentual
+      </button>
+    </div>
+
+    <div class="couple-split-quick">
+      ${
+        participantes
+          .slice(0, 2)
+          .map(
+            (p, index) => `
+              <button
+                type="button"
+                data-split-quick="ONE"
+                data-person-index="${index}"
+              >
+                ${escapeHtml(p.nome)} 100%
+              </button>
+            `
+          )
+          .join('')
+      }
+
+      <button
+        type="button"
+        data-split-quick="EQUAL"
+      >
+        50 / 50
+      </button>
+    </div>
+
+    <div class="couple-split-rows">
+      ${
+        inicial.map(
+          item => `
+            <label
+              class="couple-split-row"
+              data-person-email="${escapeAttribute(
+                item.email
+              )}"
+            >
+              <span class="couple-split-person">
+                <b>👤 ${escapeHtml(
+                  item.nome
+                )}</b>
+                <small
+                  data-split-preview="${escapeAttribute(
+                    item.email
+                  )}"
+                ></small>
+              </span>
+
+              <span class="couple-split-input-wrap">
+                <span
+                  class="couple-split-unit"
+                  data-split-unit
+                >R$</span>
+
+                <input
+                  type="number"
+                  inputmode="decimal"
+                  min="0"
+                  step="0.01"
+                  value="${Number(
+                    item.valor || 0
+                  ).toFixed(2)}"
+                  data-split-value
+                  data-email="${escapeAttribute(
+                    item.email
+                  )}"
+                  data-nome="${escapeAttribute(
+                    item.nome
+                  )}"
+                >
+              </span>
+            </label>
+          `
+        )
+        .join('')
+      }
+    </div>
+
+    <div
+      class="couple-split-summary"
+      data-split-summary
+    ></div>
+
+  `;
+
+  card
+    .querySelectorAll(
+      '[data-split-mode]'
+    )
+    .forEach(
+      button => {
+        button.addEventListener(
+          'click',
+          () =>
+            trocarModoRateioCasal(
+              prefixo,
+              button.dataset
+                .splitMode
+            )
+        );
+      }
+    );
+
+  card
+    .querySelectorAll(
+      '[data-split-quick="ONE"]'
+    )
+    .forEach(
+      button => {
+        button.addEventListener(
+          'click',
+          () =>
+            aplicarAtalhoRateioCasal(
+              prefixo,
+              'ONE',
+              Number(
+                button.dataset
+                  .personIndex || 0
+              )
+            )
+        );
+      }
+    );
+
+  card
+    .querySelector(
+      '[data-split-quick="EQUAL"]'
+    )
+    ?.addEventListener(
+      'click',
+      () =>
+        aplicarAtalhoRateioCasal(
+          prefixo,
+          'EQUAL'
+        )
+    );
+
+  card
+    .querySelectorAll(
+      '[data-split-value]'
+    )
+    .forEach(
+      input => {
+        input.addEventListener(
+          'input',
+          () => {
+            card.dataset.autoSplit =
+              '0';
+            atualizarResumoRateioCasal(
+              prefixo
+            );
+          }
+        );
+      }
+    );
+
+  return card;
+}
+
+
+function totalDoRateioCasal(
+  prefixo
+) {
+
+  const campoId =
+    prefixo === 'rec'
+      ? 'recValor'
+      : 'lancamentoValor';
+
+  return Math.max(
+    0,
+    Number(
+      document.getElementById(
+        campoId
+      )?.value || 0
+    )
+  );
+}
+
+
+function rateioAtualDoCard(
+  prefixo
+) {
+
+  const card =
+    document.getElementById(
+      `${prefixo}RateioCard`
+    );
+
+  if (!card) {
+    return [];
+  }
+
+  const total =
+    totalDoRateioCasal(
+      prefixo
+    );
+
+  const modo =
+    card.dataset.mode ||
+    'VALOR';
+
+  const inputs =
+    [
+      ...card.querySelectorAll(
+        '[data-split-value]'
+      )
+    ];
+
+  if (
+    modo ===
+    'PERCENTUAL'
+  ) {
+
+    const percentuais =
+      inputs.map(
+        input =>
+          Math.max(
+            0,
+            numeroRateioInput(
+              input.value
+            )
+          )
+      );
+
+    const somaPercentual =
+      percentuais.reduce(
+        (s, valor) =>
+          s + valor,
+        0
+      );
+
+    const valores =
+      percentuais.map(
+        percentual =>
+          Math.round(
+            (
+              total *
+              percentual /
+              100
+            ) * 100
+          ) /
+          100
+      );
+
+    /*
+     * Quando a soma fecha 100%, corrigimos apenas o
+     * arredondamento de centavos na última pessoa.
+     */
+    if (
+      valores.length &&
+      Math.abs(
+        somaPercentual - 100
+      ) <= 0.01
+    ) {
+      const somaAnterior =
+        valores
+          .slice(0, -1)
+          .reduce(
+            (s, valor) =>
+              s + valor,
+            0
+          );
+
+      valores[
+        valores.length - 1
+      ] =
+        Math.round(
+          (
+            total - somaAnterior
+          ) * 100
+        ) /
+        100;
+    }
+
+    return inputs.map(
+      (input, index) => ({
+        nome:
+          input.dataset.nome || '',
+        email:
+          input.dataset.email || '',
+        valor:
+          Math.max(
+            0,
+            valores[index] || 0
+          ),
+        percentual:
+          percentuais[index]
+      })
+    );
+  }
+
+  return inputs.map(
+    input => {
+
+      const valor =
+        Math.max(
+          0,
+          numeroRateioInput(
+            input.value
+          )
+        );
+
+      return {
+        nome:
+          input.dataset.nome || '',
+        email:
+          input.dataset.email || '',
+        valor:
+          Math.round(
+            valor * 100
+          ) / 100,
+        percentual:
+          total > 0
+            ? Math.round(
+                (
+                  valor /
+                  total *
+                  100
+                ) * 100
+              ) /
+              100
+            : 0
+      };
+    }
+  );
+}
+
+
+function atualizarResumoRateioCasal(
+  prefixo
+) {
+
+  const card =
+    document.getElementById(
+      `${prefixo}RateioCard`
+    );
+
+  if (!card) {
+    return;
+  }
+
+  const total =
+    totalDoRateioCasal(
+      prefixo
+    );
+
+  const modo =
+    card.dataset.mode ||
+    'VALOR';
+
+  const rateio =
+    rateioAtualDoCard(
+      prefixo
+    );
+
+  const somaValor =
+    rateio.reduce(
+      (s, item) =>
+        s + Number(
+          item.valor || 0
+        ),
+      0
+    );
+
+  const somaPercentual =
+    [
+      ...card.querySelectorAll(
+        '[data-split-value]'
+      )
+    ].reduce(
+      (s, input) =>
+        s +
+        (
+          modo ===
+          'PERCENTUAL'
+            ? numeroRateioInput(
+                input.value
+              )
+            : 0
+        ),
+      0
+    );
+
+  rateio.forEach(
+    item => {
+
+      const preview =
+        [
+          ...card.querySelectorAll(
+            '[data-split-preview]'
+          )
+        ].find(
+          elemento =>
+            elemento.dataset
+              .splitPreview ===
+            item.email
+        );
+
+      if (preview) {
+        preview.textContent =
+          `${formatMoney(
+            item.valor
+          )} · ${Number(
+            item.percentual || 0
+          ).toFixed(1)}%`;
+      }
+    }
+  );
+
+  const summary =
+    card.querySelector(
+      '[data-split-summary]'
+    );
+
+  if (summary) {
+
+    const valido =
+      modo === 'PERCENTUAL'
+        ? Math.abs(
+            somaPercentual - 100
+          ) <= 0.01
+        : Math.abs(
+            somaValor - total
+          ) <= 0.01;
+
+    summary.classList.toggle(
+      'is-error',
+      total > 0 && !valido
+    );
+
+    summary.textContent =
+      modo === 'PERCENTUAL'
+        ? `Distribuído: ${somaPercentual.toFixed(1)}% de 100%`
+        : `Distribuído: ${formatMoney(somaValor)} de ${formatMoney(total)}`;
+  }
+}
+
+
+function preencherRateioIgual(
+  prefixo
+) {
+
+  const card =
+    document.getElementById(
+      `${prefixo}RateioCard`
+    );
+
+  if (!card) {
+    return;
+  }
+
+  const total =
+    totalDoRateioCasal(
+      prefixo
+    );
+
+  const inputs =
+    [
+      ...card.querySelectorAll(
+        '[data-split-value]'
+      )
+    ];
+
+  if (!inputs.length) {
+    return;
+  }
+
+  if (
+    card.dataset.mode ===
+    'PERCENTUAL'
+  ) {
+
+    const base =
+      100 /
+      inputs.length;
+
+    let soma = 0;
+
+    inputs.forEach(
+      (input, index) => {
+
+        const valor =
+          index ===
+          inputs.length - 1
+            ? 100 - soma
+            : Math.round(
+                base * 100
+              ) / 100;
+
+        soma += valor;
+
+        input.value =
+          valor.toFixed(2);
+      }
+    );
+
+  } else {
+
+    const totalCentavos =
+      Math.round(
+        total * 100
+      );
+
+    const base =
+      Math.floor(
+        totalCentavos /
+        inputs.length
+      );
+
+    let usados = 0;
+
+    inputs.forEach(
+      (input, index) => {
+
+        const centavos =
+          index ===
+          inputs.length - 1
+            ? totalCentavos - usados
+            : base;
+
+        usados += centavos;
+
+        input.value =
+          (
+            centavos / 100
+          ).toFixed(2);
+      }
+    );
+  }
+
+  atualizarResumoRateioCasal(
+    prefixo
+  );
+}
+
+
+function aplicarAtalhoRateioCasal(
+  prefixo,
+  tipo,
+  pessoaIndex = 0
+) {
+
+  const card =
+    document.getElementById(
+      `${prefixo}RateioCard`
+    );
+
+  if (!card) {
+    return;
+  }
+
+  const inputs =
+    [
+      ...card.querySelectorAll(
+        '[data-split-value]'
+      )
+    ];
+
+  if (
+    tipo ===
+    'EQUAL'
+  ) {
+    card.dataset.autoSplit =
+      '1';
+    preencherRateioIgual(
+      prefixo
+    );
+    return;
+  }
+
+  card.dataset.autoSplit =
+    '0';
+
+  inputs.forEach(
+    (input, index) => {
+      input.value =
+        card.dataset.mode ===
+        'PERCENTUAL'
+          ? (
+              index === pessoaIndex
+                ? '100.00'
+                : '0.00'
+            )
+          : (
+              index === pessoaIndex
+                ? totalDoRateioCasal(
+                    prefixo
+                  ).toFixed(2)
+                : '0.00'
+            );
+    }
+  );
+
+  atualizarResumoRateioCasal(
+    prefixo
+  );
+}
+
+
+function trocarModoRateioCasal(
+  prefixo,
+  novoModo
+) {
+
+  const card =
+    document.getElementById(
+      `${prefixo}RateioCard`
+    );
+
+  if (
+    !card ||
+    ![
+      'VALOR',
+      'PERCENTUAL'
+    ].includes(
+      novoModo
+    )
+  ) {
+    return;
+  }
+
+  const rateioAtual =
+    rateioAtualDoCard(
+      prefixo
+    );
+
+  card.dataset.mode =
+    novoModo;
+
+  card
+    .querySelectorAll(
+      '[data-split-mode]'
+    )
+    .forEach(
+      button =>
+        button.classList.toggle(
+          'active',
+          button.dataset
+            .splitMode ===
+            novoModo
+        )
+    );
+
+  card
+    .querySelectorAll(
+      '[data-split-unit]'
+    )
+    .forEach(
+      unit => {
+        unit.textContent =
+          novoModo ===
+          'PERCENTUAL'
+            ? '%'
+            : 'R$';
+      }
+    );
+
+  card
+    .querySelectorAll(
+      '[data-split-value]'
+    )
+    .forEach(
+      input => {
+
+        const item =
+          rateioAtual.find(
+            x =>
+              x.email ===
+              input.dataset.email
+          );
+
+        input.value =
+          novoModo ===
+          'PERCENTUAL'
+            ? Number(
+                item?.percentual || 0
+              ).toFixed(2)
+            : Number(
+                item?.valor || 0
+              ).toFixed(2);
+      }
+    );
+
+  atualizarResumoRateioCasal(
+    prefixo
+  );
+}
+
+
+function coletarRateioCasal(
+  prefixo,
+  total
+) {
+
+  const card =
+    document.getElementById(
+      `${prefixo}RateioCard`
+    );
+
+  if (!card) {
+    throw new Error(
+      'Não foi possível carregar a divisão da despesa do casal.'
+    );
+  }
+
+  const modo =
+    card.dataset.mode ||
+    'VALOR';
+
+  const inputs =
+    [
+      ...card.querySelectorAll(
+        '[data-split-value]'
+      )
+    ];
+
+  if (inputs.length < 2) {
+    throw new Error(
+      'Cadastre os dois usuários para dividir uma despesa do casal.'
+    );
+  }
+
+  const totalNumero =
+    Math.round(
+      Number(total || 0) *
+      100
+    ) /
+    100;
+
+  if (
+    modo ===
+    'PERCENTUAL'
+  ) {
+
+    const somaPercentual =
+      inputs.reduce(
+        (s, input) =>
+          s +
+          numeroRateioInput(
+            input.value
+          ),
+        0
+      );
+
+    if (
+      Math.abs(
+        somaPercentual - 100
+      ) > 0.01
+    ) {
+      throw new Error(
+        'A divisão percentual precisa totalizar 100%.'
+      );
+    }
+  }
+
+  const rateio =
+    rateioAtualDoCard(
+      prefixo
+    );
+
+  const soma =
+    Math.round(
+      rateio.reduce(
+        (s, item) =>
+          s + Number(
+            item.valor || 0
+          ),
+        0
+      ) * 100
+    ) /
+    100;
+
+  if (
+    Math.abs(
+      soma - totalNumero
+    ) > 0.01
+  ) {
+    throw new Error(
+      'A divisão precisa somar exatamente o valor total da despesa.'
+    );
+  }
+
+  return rateio.filter(
+    item =>
+      Number(
+        item.valor || 0
+      ) > 0
+  );
+}
+
+
+function configurarRateioCasalLancamento(
+  existente = null
+) {
+
+  const form =
+    document.getElementById(
+      'formLancamento'
+    );
+
+  if (!form) {
+    return;
+  }
+
+  const tipo =
+    document.getElementById(
+      'lancamentoTipo'
+    )?.value ||
+    'DESPESA';
+
+  const deveMostrar =
+    state.escopo ===
+      'CASAL' &&
+    tipo ===
+      'DESPESA';
+
+  let card =
+    document.getElementById(
+      'lancamentoRateioCard'
+    );
+
+  if (!deveMostrar) {
+    card?.remove();
+    return;
+  }
+
+  if (!card) {
+
+    card =
+      criarCardRateioCasal(
+        'lancamento',
+        Number(
+          document.getElementById(
+            'lancamentoValor'
+          )?.value || 0
+        ),
+        existente?.rateio || []
+      );
+
+    const status =
+      form.querySelector(
+        '.status-form-grid'
+      );
+
+    if (status) {
+      status.insertAdjacentElement(
+        'afterend',
+        card
+      );
+    } else {
+      form.prepend(card);
+    }
+
+    document
+      .getElementById(
+        'lancamentoValor'
+      )
+      ?.addEventListener(
+        'input',
+        () => {
+          if (
+            card.dataset.autoSplit ===
+            '1'
+          ) {
+            preencherRateioIgual(
+              'lancamento'
+            );
+          } else {
+            atualizarResumoRateioCasal(
+              'lancamento'
+            );
+          }
+        }
+      );
+  }
+
+  atualizarResumoRateioCasal(
+    'lancamento'
+  );
+}
+
+
+function configurarRateioCasalRecorrente(
+  existente = null
+) {
+
+  if (
+    state.escopo !==
+    'CASAL'
+  ) {
+    return;
+  }
+
+  const form =
+    document.getElementById(
+      'formRecorrente'
+    );
+
+  if (!form) {
+    return;
+  }
+
+  if (
+    document.getElementById(
+      'recRateioCard'
+    )
+  ) {
+    return;
+  }
+
+  const card =
+    criarCardRateioCasal(
+      'rec',
+      Number(
+        document.getElementById(
+          'recValor'
+        )?.value || 0
+      ),
+      existente?.rateio || []
+    );
+
+  const observacao =
+    document.getElementById(
+      'recObservacao'
+    )?.closest(
+      'label'
+    );
+
+  form.insertBefore(
+    card,
+    observacao || null
+  );
+
+  document
+    .getElementById(
+      'recValor'
+    )
+    ?.addEventListener(
+      'input',
+      () => {
+        if (
+          card.dataset.autoSplit ===
+          '1'
+        ) {
+          preencherRateioIgual(
+            'rec'
+          );
+        } else {
+          atualizarResumoRateioCasal(
+            'rec'
+          );
+        }
+      }
+    );
+
+  atualizarResumoRateioCasal(
+    'rec'
+  );
+}
+
+
+function resumoRateioLancamentoHtml(
+  item
+) {
+
+  if (
+    item?.origemCasal
+  ) {
+    return `
+      <small class="launch-couple-share">
+        ❤️ Casal · sua parte ${formatMoney(
+          item.valor || 0
+        )} de ${formatMoney(
+          item.valorOriginalCasal || 0
+        )}
+      </small>
+    `;
+  }
+
+  if (
+    item?.escopo ===
+      'CASAL' &&
+    Array.isArray(
+      item.rateio
+    ) &&
+    item.rateio.length
+  ) {
+
+    return `
+      <small class="launch-couple-share">
+        ❤️ ${item.rateio
+          .map(
+            parte =>
+              `${escapeHtml(
+                parte.nome
+              )} ${formatMoney(
+                parte.valor
+              )}`
+          )
+          .join(' · ')}
+      </small>
+    `;
+  }
+
+  return '';
+}
+
 function hojeLocalISO() {
 
   const agora =
@@ -11784,6 +13019,10 @@ function renderPaginaLancamentos(
                     : ''
                 }
 
+                ${resumoRateioLancamentoHtml(
+                  item
+                )}
+
               </div>
 
 
@@ -11811,7 +13050,8 @@ function renderPaginaLancamentos(
 
 
               ${
-                podeEditar
+                podeEditar &&
+                !item.somenteLeitura
                   ? `
                     <div
                       class="launch-actions-icons"
@@ -12264,10 +13504,18 @@ function abrirFormularioLancamento(
             );
 
             atualizarVisibilidadeDataRealizacao();
+
+            configurarRateioCasalLancamento(
+              existente
+            );
           }
         );
       }
     );
+
+  configurarRateioCasalLancamento(
+    existente
+  );
 }
 
 
@@ -12479,6 +13727,17 @@ async function salvarLancamentoFormulario(
         ''
     };
 
+    if (
+      state.escopo === 'CASAL' &&
+      dados.tipo === 'DESPESA'
+    ) {
+      dados.rateio =
+        coletarRateioCasal(
+          'lancamento',
+          dados.valor
+        );
+    }
+
     if (!dados.descricao) {
 
       throw new Error(
@@ -12599,7 +13858,10 @@ async function salvarLancamentoFormulario(
             true,
 
           observacao:
-            dados.observacao
+            dados.observacao,
+
+          rateio:
+            dados.rateio || []
         },
         'POST'
       );
@@ -12919,6 +14181,10 @@ function renderPaginaRecorrentes() {
                     : ''
                 }
 
+                ${resumoRateioLancamentoHtml(
+                  item
+                )}
+
               </div>
 
             </div>
@@ -12935,7 +14201,8 @@ function renderPaginaRecorrentes() {
               </strong>
 
               ${
-                podeEditar
+                podeEditar &&
+                !item.somenteLeitura
                   ? `
                     <div
                       class="recurring-manage-actions"
@@ -13053,6 +14320,9 @@ function abrirFormularioRecorrente(
       : null;
 
   if (!existente) {
+    configurarRateioCasalRecorrente(
+      null
+    );
     return;
   }
 
@@ -13137,6 +14407,10 @@ function abrirFormularioRecorrente(
   atribuir(
     'recObservacao',
     existente.observacao
+  );
+
+  configurarRateioCasalRecorrente(
+    existente
   );
 
   const submit =
@@ -13334,6 +14608,16 @@ async function salvarRecorrenteFormulario(
       throw new Error(
         'Informe um valor mensal válido.'
       );
+    }
+
+    if (
+      state.escopo === 'CASAL'
+    ) {
+      dados.rateio =
+        coletarRateioCasal(
+          'rec',
+          dados.valor
+        );
     }
 
     await api(
