@@ -12719,6 +12719,73 @@ async function gerarRecorrentesPlanejamento(
 }
 
 
+async function sincronizarRecorrenciasMesSelecionado() {
+
+  if (
+    !state.escopo ||
+    !podeEditarEscopoAtual()
+  ) {
+    return 0;
+  }
+
+  const filtro =
+    document.getElementById(
+      'filtroMesLancamentos'
+    );
+
+  let chave =
+    filtro?.value ||
+    chaveMesLocal();
+
+  if (
+    chave === 'TODOS' ||
+    !/^\d{4}-\d{2}$/.test(
+      chave
+    )
+  ) {
+    chave =
+      chaveMesLocal();
+  }
+
+  const [ano, mes] =
+    chave
+      .split('-')
+      .map(Number);
+
+  const resposta =
+    await api(
+      'gerarRecorrentesDoMes',
+      {
+        ano,
+        mes,
+        escopo:
+          state.escopo
+      },
+      'POST'
+    );
+
+  /*
+   * Recarrega mesmo quando criados = 0.
+   * Isso cobre o caso em que a recorrência já existia
+   * na planilha, mas o app ainda estava com cache antigo.
+   */
+  invalidarCacheLancamentos();
+
+  await carregarLancamentos(
+    {},
+    true
+  );
+
+  preencherFiltroMeses();
+  atualizarCategoriasFiltro();
+
+  return Number(
+    resposta?.criados ||
+    0
+  );
+}
+
+
 async function sincronizarFinanceiroDepoisDeAlteracao(
   incluirRecorrentes = false
 ) {
@@ -13099,30 +13166,67 @@ function criarPaginaLancamentos() {
 
         button.addEventListener(
           'click',
-          () =>
+          async () => {
+
             selecionarAbaLancamentos(
-              button.dataset.launchTab
-            )
+              button.dataset.launchTab,
+              false
+            );
+
+            if (
+              button.dataset.launchTab ===
+              'pendentes'
+            ) {
+              try {
+                await sincronizarRecorrenciasMesSelecionado();
+              } catch (error) {
+                console.error(
+                  'Sincronizar recorrências do mês:',
+                  error
+                );
+              }
+            }
+
+            await atualizarListaLancamentosPage();
+          }
         );
       }
     );
 
-  [
-    'filtroMesLancamentos',
-    'filtroCategoriaLancamentos'
-  ].forEach(
-    id => {
+  document
+    .getElementById(
+      'filtroMesLancamentos'
+    )
+    ?.addEventListener(
+      'change',
+      async () => {
 
-      document
-        .getElementById(
-          id
-        )
-        ?.addEventListener(
-          'change',
-          atualizarListaLancamentosPage
-        );
-    }
-  );
+        if (
+          state.lancamentosAba ===
+          'pendentes'
+        ) {
+          try {
+            await sincronizarRecorrenciasMesSelecionado();
+          } catch (error) {
+            console.error(
+              'Sincronizar recorrências do mês:',
+              error
+            );
+          }
+        }
+
+        await atualizarListaLancamentosPage();
+      }
+    );
+
+  document
+    .getElementById(
+      'filtroCategoriaLancamentos'
+    )
+    ?.addEventListener(
+      'change',
+      atualizarListaLancamentosPage
+    );
 
   document
     .getElementById(
@@ -15035,6 +15139,21 @@ function renderPaginaRecorrentes() {
                         }
                       </button>
 
+                      <button
+                        type="button"
+                        class="recurring-delete-btn"
+                        data-rec-action="delete"
+                        data-id="${
+                          escapeAttribute(
+                            item.id
+                          )
+                        }"
+                        title="Excluir recorrência"
+                        aria-label="Excluir recorrência"
+                      >
+                        🗑️ Excluir
+                      </button>
+
                     </div>
                   `
                   : ''
@@ -15076,6 +15195,23 @@ function renderPaginaRecorrentes() {
           'click',
           () =>
             alternarRecorrenteAtivo(
+              button.dataset.id
+            )
+        );
+      }
+    );
+
+  lista
+    .querySelectorAll(
+      '[data-rec-action="delete"]'
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          'click',
+          () =>
+            excluirRecorrenteCadastro(
               button.dataset.id
             )
         );
@@ -15573,6 +15709,95 @@ async function alternarRecorrenteAtivo(
     window.alert(
       error.message ||
       'Não foi possível atualizar a recorrência.'
+    );
+  }
+}
+
+
+async function excluirRecorrenteCadastro(
+  id
+) {
+
+  if (
+    !exigirEdicaoNoFrontend()
+  ) {
+    return;
+  }
+
+  const item =
+    state.recorrentes.find(
+      x =>
+        String(
+          x.id
+        ) ===
+        String(
+          id
+        )
+    );
+
+  if (!item) {
+    return;
+  }
+
+  const confirmado =
+    window.confirm(
+      `Excluir a recorrência "${item.descricao}"?\n\nAs cobranças pendentes geradas por ela também serão excluídas. Movimentações já pagas/recebidas serão mantidas no histórico.`
+    );
+
+  if (!confirmado) {
+    return;
+  }
+
+  try {
+
+    await api(
+      'excluirRecorrente',
+      {
+        id:
+          item.id
+      },
+      'POST'
+    );
+
+    state.recorrenciasGeradas =
+      {};
+
+    await carregarRecorrentesDoEscopo();
+
+    invalidarCacheLancamentos();
+
+    await Promise.all([
+      carregarLancamentos(
+        {},
+        true
+      ),
+      carregarDashboard()
+    ]);
+
+    preencherFiltroMeses();
+    atualizarCategoriasFiltro();
+
+    state.lancamentosAba =
+      'recorrentes';
+
+    selecionarAbaLancamentos(
+      'recorrentes',
+      false
+    );
+
+    renderPaginaRecorrentes();
+    atualizarContadoresTabsLancamentos();
+
+  } catch (error) {
+
+    console.error(
+      'Excluir recorrência:',
+      error
+    );
+
+    window.alert(
+      error.message ||
+      'Não foi possível excluir a recorrência.'
     );
   }
 }

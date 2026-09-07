@@ -2453,6 +2453,23 @@ body.scope-readonly #quickNovoLancamento {
   color: var(--text);
 }
 
+.recurring-delete-btn {
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--negative) 42%, var(--border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--negative) 9%, var(--surface));
+  color: var(--negative);
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.recurring-delete-btn:hover {
+  border-color: var(--negative);
+}
+
 .secondary-action,
 .launch-icon-btn,
 .objective-icon-btn,
