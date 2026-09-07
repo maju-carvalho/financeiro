@@ -12175,6 +12175,68 @@ function coletarRateioCasal(
 }
 
 
+function anexarRateioSeguroParaApi(
+  dados,
+  rateio
+) {
+
+  const limpo =
+    (Array.isArray(rateio)
+      ? rateio
+      : []
+    ).map(
+      item => ({
+        nome:
+          String(
+            item?.nome || ''
+          ).trim(),
+        email:
+          String(
+            item?.email || ''
+          )
+            .trim()
+            .toLowerCase(),
+        valor:
+          Math.round(
+            Number(
+              item?.valor || 0
+            ) * 100
+          ) / 100,
+        percentual:
+          Math.round(
+            Number(
+              item?.percentual || 0
+            ) * 100
+          ) / 100,
+        conta:
+          String(
+            item?.conta || ''
+          ).trim()
+      })
+    )
+    .filter(
+      item =>
+        item.valor > 0 &&
+        (
+          item.email ||
+          item.nome
+        )
+    );
+
+  dados.rateio = limpo;
+
+  /*
+   * Cópia serializada de segurança para o Apps Script.
+   * O backend V7.2.1 aceita os dois formatos.
+   */
+  dados.rateioJson =
+    JSON.stringify(
+      limpo
+    );
+
+  return dados;
+}
+
 function configurarRateioCasalLancamento(
   existente = null
 ) {
@@ -14458,11 +14520,13 @@ async function salvarLancamentoFormulario(
       state.escopo === 'CASAL' &&
       dados.tipo === 'DESPESA'
     ) {
-      dados.rateio =
+      anexarRateioSeguroParaApi(
+        dados,
         coletarRateioCasal(
           'lancamento',
           dados.valor
-        );
+        )
+      );
     }
 
     if (!dados.descricao) {
@@ -14588,7 +14652,13 @@ async function salvarLancamentoFormulario(
             dados.observacao,
 
           rateio:
-            dados.rateio || []
+            dados.rateio || [],
+
+          rateioJson:
+            dados.rateioJson ||
+            JSON.stringify(
+              dados.rateio || []
+            )
         },
         'POST'
       );
@@ -15340,11 +15410,13 @@ async function salvarRecorrenteFormulario(
     if (
       state.escopo === 'CASAL'
     ) {
-      dados.rateio =
+      anexarRateioSeguroParaApi(
+        dados,
         coletarRateioCasal(
           'rec',
           dados.valor
-        );
+        )
+      );
     }
 
     await api(
